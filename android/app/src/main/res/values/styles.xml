@@ -14,5 +14,9 @@
          This Theme is only used starting with V2 of Flutter's Android embedding. -->
     <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
         <item name="android:windowBackground">?android:colorBackground</item>
+        <!-- Permite que o Flutter pinte sob a barra de navegação do sistema,
+             tornando-a totalmente transparente via SystemChrome no Dart. -->
+        <item name="android:windowTranslucentNavigation">true</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>
 </resources>

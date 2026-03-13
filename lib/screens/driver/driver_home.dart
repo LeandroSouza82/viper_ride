@@ -67,8 +67,8 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
   final _positionNotifier = ValueNotifier<geo.Position?>(null);
   final _rideRequestNotifier = ValueNotifier<RideRequest?>(null);
 
-  // Combina online + posição: apenas o painel inferior escuta os dois.
-  late final Listenable _overlayListenable;
+  ValueNotifier<bool> get _isOnline => _onlineNotifier;
+  final _sheetController = DraggableScrollableController();
 
   StreamSubscription<geo.Position>? _positionSub;
   MapboxMap? _mapController;
@@ -83,7 +83,6 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
   @override
   void initState() {
     super.initState();
-    _overlayListenable = Listenable.merge([_onlineNotifier, _positionNotifier]);
     // postFrameCallback: executa somente após o primeiro frame estar pintado
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -553,7 +552,14 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
     await _clearRouteOverview();
   }
 
-  void _toggleOnline() => _onlineNotifier.value ? _goOffline() : _goOnline();
+  void _collapseSheet() {
+    if (!_sheetController.isAttached) return;
+    _sheetController.animateTo(
+      0.12,
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOut,
+    );
+  }
 
   /// Encerra todos os serviços ativos sem alterar estado de UI.
   /// Pode ser chamado por _goOffline, _confirmLogout e dispose.
@@ -704,6 +710,7 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
     _canShowMapNotifier.dispose();
     _positionNotifier.dispose();
     _rideRequestNotifier.dispose();
+    _sheetController.dispose();
     // Destrói o renderer nativo do Mapbox antes de liberar a tela
     // Evita lockHardwareCanvas quando o widget é removido da árvore
     _mapController?.dispose();
@@ -901,20 +908,47 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
             ),
           ),
 
-          // ── Camada 2: Overlays dinâmicos — online + GPS ──────────────────
-          // ListenableBuilder com Listenable.merge: reconstrói SOMENTE este
-          // subtree quando _onlineNotifier ou _positionNotifier mudam.
-          // As Camadas 0 e 1 não são tocadas em nenhuma circunstância.
-          ListenableBuilder(
-            listenable: _overlayListenable,
-            builder: (context, _) => Align(
-              alignment: Alignment.bottomCenter,
-              child: _DriverBottomPanel(
-                online: _onlineNotifier.value,
-                position: _positionNotifier.value,
-                onToggle: _toggleOnline,
-              ),
-            ),
+          // ── Camada 2: Controle de disponibilidade ─────────────────────
+          // OFFLINE → só o botão pílula branco flutuando a 40 px do fundo.
+          // ONLINE  → DraggableScrollableSheet nascendo do rodapé.
+          // O ValueListenableBuilder reconstrói APENAS esta camada; o mapa
+          // e os botões superiores nunca são tocados.
+          ValueListenableBuilder<bool>(
+            valueListenable: _isOnline,
+            builder: (context, isOnline, _) {
+              if (!isOnline) {
+                // Estado offline: pílula branca centralizada, 40 px do fundo
+                return Positioned(
+                  left: 24,
+                  right: 24,
+                  bottom: 40,
+                  child: SafeArea(
+                    top: false,
+                    child: Center(child: _StartPillButton(onTap: _goOnline)),
+                  ),
+                );
+              }
+
+              // Estado online: sheet arrastável ancorada no rodapé.
+              // Positioned.fill dá ao DraggableScrollableSheet a altura total
+              // da tela para trabalhar; expand: true faz o sheet ocupar esse
+              // espaço e renderizar o conteúdo colado na borda inferior.
+              return Positioned.fill(
+                child: DraggableScrollableSheet(
+                  controller: _sheetController,
+                  expand: true,
+                  initialChildSize: 0.12,
+                  minChildSize: 0.12,
+                  maxChildSize: 1.0,
+                  snap: true,
+                  snapSizes: const [0.12, 0.45, 1.0],
+                  builder: (context, scrollController) => _DriverStatusSheet(
+                    scrollController: scrollController,
+                    onGoOffline: _goOffline,
+                  ),
+                ),
+              );
+            },
           ),
 
           // ── Camada 3: Alerta de corrida — isolado do mapa ────────────────
@@ -929,7 +963,7 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
               return SafeArea(
                 child: Padding(
                   padding: const EdgeInsets.only(
-                    bottom: 140,
+                    bottom: 156,
                     left: 16,
                     right: 16,
                   ),
@@ -978,89 +1012,180 @@ class _FloatingIconButton extends StatelessWidget {
   }
 }
 
-class _DriverBottomPanel extends StatelessWidget {
-  const _DriverBottomPanel({
-    required this.online,
-    required this.position,
-    required this.onToggle,
+/// Botão pílula branco exibido quando o motorista está offline.
+class _StartPillButton extends StatelessWidget {
+  const _StartPillButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ElevatedButton(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black,
+        elevation: 6,
+        shadowColor: Colors.black38,
+        padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 18),
+        shape: const StadiumBorder(),
+      ),
+      onPressed: onTap,
+      child: const Text(
+        'COMEÇAR',
+        style: TextStyle(
+          color: Colors.black,
+          fontSize: 17,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.3,
+        ),
+      ),
+    );
+  }
+}
+
+/// Gaveta inferior exibida SOMENTE quando o motorista está online.
+///
+/// 12 % (mínimo): drag handle + [⚙] Você está online [≡]
+/// 45 % / 100 %: revela o botão vermelho FICAR OFFLINE
+class _DriverStatusSheet extends StatelessWidget {
+  const _DriverStatusSheet({
+    required this.scrollController,
+    required this.onGoOffline,
   });
 
-  final bool online;
-  final geo.Position? position;
-  final VoidCallback onToggle;
+  final ScrollController scrollController;
+  final VoidCallback onGoOffline;
 
   @override
   Widget build(BuildContext context) {
     final bottomPad = MediaQuery.of(context).padding.bottom;
-    const green = Color(0xFF2ECC71);
 
     return Container(
-      width: double.infinity,
-      padding: EdgeInsets.fromLTRB(24, 20, 24, 20 + bottomPad),
       decoration: const BoxDecoration(
-        color: Color(0xFF111111),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        color: Color(0xFF121212),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Indicador de status
-          Row(
-            children: [
-              Container(
-                width: 10,
-                height: 10,
+      child: SingleChildScrollView(
+        controller: scrollController,
+        physics: const ClampingScrollPhysics(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // ── Drag handle ─────────────────────────────────────────────
+            const SizedBox(height: 10),
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
                 decoration: BoxDecoration(
-                  color: online ? green : Colors.grey,
-                  shape: BoxShape.circle,
+                  color: const Color(0xFF424242),
+                  borderRadius: BorderRadius.circular(999),
                 ),
               ),
-              const SizedBox(width: 10),
-              Text(
-                online ? 'Online — Aguardando corrida' : 'Você está offline',
-                style: TextStyle(
-                  color: online ? green : Colors.grey,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14,
-                ),
+            ),
+            const SizedBox(height: 16),
+
+            // ── Linha de status: ícone | texto | ícone ──────────────────
+            // Visível no snap mínimo (12 %). Imutável — sem rebuild.
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  _SheetIconButton(icon: Icons.tune_rounded, onTap: () {}),
+                  const Text(
+                    'Você está online',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  _SheetIconButton(
+                    icon: Icons.format_list_bulleted_rounded,
+                    onTap: () {},
+                  ),
+                ],
               ),
-            ],
-          ),
-          if (position != null) ...[
-            const SizedBox(height: 6),
-            Text(
-              '${position!.latitude.toStringAsFixed(5)}, '
-              '${position!.longitude.toStringAsFixed(5)}',
-              style: const TextStyle(color: Colors.grey, fontSize: 11),
+            ),
+
+            // ── Conteúdo expandido (visível a partir de 45 %) ────────────
+            Padding(
+              padding: EdgeInsets.fromLTRB(20, 28, 20, 24 + bottomPad),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(vertical: 18),
+                        shape: const StadiumBorder(),
+                      ),
+                      onPressed: onGoOffline,
+                      child: const Text(
+                        'FICAR OFFLINE',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  // Espaço reservado para ganhos do dia / métricas futuras
+                  Container(
+                    height: 80,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1E1E1E),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Center(
+                      child: Text(
+                        'Aguardando novas corridas...',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Color(0xFF5A5A5A),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
-          const SizedBox(height: 16),
-          // Botão principal
-          SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: ElevatedButton(
-              onPressed: onToggle,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: online ? green : ViperColors.white,
-                foregroundColor: ViperColors.black,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-              child: Text(
-                online ? 'FICAR OFFLINE' : 'FICAR ONLINE',
-                style: const TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 15,
-                  letterSpacing: 0.5,
-                ),
-              ),
-            ),
-          ),
-        ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Botão de ícone circular usado na linha de status da gaveta.
+class _SheetIconButton extends StatelessWidget {
+  const _SheetIconButton({required this.icon, required this.onTap});
+
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: const Color(0xFF1E1E1E),
+          borderRadius: BorderRadius.circular(22),
+        ),
+        child: Icon(icon, color: Colors.white, size: 22),
       ),
     );
   }

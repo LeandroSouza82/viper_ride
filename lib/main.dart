@@ -26,6 +26,19 @@ void main() async {
   // Reforço ao android:screenOrientation="portrait" no AndroidManifest.
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
+  // Barra de navegação do sistema 100 % transparente: o mapa escuro se
+  // estende até a borda inferior e os botões do Android flutuam sobre ele.
+  // statusBarColor também é transparente para consistência no iOS/Android.
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarIconBrightness: Brightness.light,
+      systemNavigationBarDividerColor: Colors.transparent,
+    ),
+  );
+
   // ── 1. Carregar .env ──────────────────────────────────────────────────────
   try {
     await dotenv.load(fileName: '.env');
