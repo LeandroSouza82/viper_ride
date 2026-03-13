@@ -48,7 +48,12 @@ class _ViperLoginScreenState extends State<ViperLoginScreen> {
     );
     if (!mounted) return;
     setState(() => _loading = false);
-    if (error != null) _showError(error);
+    if (error != null) {
+      _showError(error);
+      return;
+    }
+    // O onAuthStateChange no AuthPortal detecta a nova sessão automaticamente.
+    // Nenhuma navegação manual necessária aqui.
   }
 
   @override

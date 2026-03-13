@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../services/viper_foreground_service.dart';
 import '../services/viper_wakelock_service.dart';
 import '../widgets/map_display.dart';
 import '../widgets/search_sheet.dart';
@@ -15,13 +14,11 @@ class _ViperHomeScreenState extends State<ViperHomeScreen> {
   @override
   void initState() {
     super.initState();
-    ViperForegroundService.start();
     ViperWakelockService.enable();
   }
 
   @override
   void dispose() {
-    ViperForegroundService.stop();
     ViperWakelockService.disable();
     super.dispose();
   }
