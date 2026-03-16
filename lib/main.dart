@@ -4,6 +4,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/viper_theme.dart';
 import 'screens/auth/auth_portal.dart';
+import 'screens/onboarding/phone_auth_screen.dart';
 import 'screens/splash/splash_screen.dart';
 import 'services/map_engine.dart';
 import 'services/viper_foreground_service.dart';
@@ -93,7 +94,7 @@ class ViperApp extends StatelessWidget {
           onSurface: ViperColors.white,
         ),
       ),
-      home: const ViperSplashScreen(),
+      home: const PhoneAuthScreen(),
       routes: {
         '/splash': (_) => const ViperSplashScreen(),
         // '/login' → ViperAuthPortal sem sessão mostra LoginScreen diretamente.

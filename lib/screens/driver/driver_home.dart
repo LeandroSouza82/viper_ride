@@ -75,6 +75,9 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
   final double _dailyEarnings = 154.20;
   final int _tripsCompleted = 8;
   final int _points = 120;
+
+  // Simula o array de veículos aprovados vindo do Supabase
+  final List<String> _veiculosCadastrados = ['moto', 'carro'];
   final PageController _pageController = PageController();
   int _currentPage = 0;
 
@@ -694,9 +697,9 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
       ),
       builder: (ctx) {
         // Estado local do modal: não afeta o State principal.
-        var entregas = false;
-        var moto = false;
-        var carros = true;
+        var isEntregasActive = false;
+        var isMotoActive = false;
+        var isCarroActive = true;
         var aceitarDinheiro = true;
         var avaliacaoAtiva = false;
         var notaMinima = 4.5;
@@ -890,180 +893,48 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
                           mainAxisSpacing: 12,
                           childAspectRatio: 1.1,
                           children: [
-                            // ── Viper Entregas ──────────────────────────────
-                            Container(
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                border: Border.all(
-                                  color: Colors.black,
-                                  width: 2,
-                                ),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Stack(
-                                children: [
-                                  Align(
-                                    alignment: Alignment.topRight,
-                                    child: Checkbox(
-                                      value: entregas,
-                                      activeColor: Colors.black,
-                                      checkColor: Colors.white,
-                                      side: const BorderSide(
-                                        color: Colors.black,
-                                        width: 2,
-                                      ),
-                                      onChanged: (v) => setModalState(
-                                        () => entregas = v ?? false,
-                                      ),
-                                    ),
-                                  ),
-                                  Center(
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: const [
-                                        Icon(
-                                          Icons.inventory_2_outlined,
-                                          size: 36,
-                                          color: Colors.black,
-                                        ),
-                                        SizedBox(height: 8),
-                                        Text(
-                                          'Viper Entregas',
-                                          style: TextStyle(
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.black,
-                                          ),
-                                          textAlign: TextAlign.center,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
+                            // CARD 1: Viper Entregas (Padrão para todos)
+                            _buildPreferenceCard(
+                              title: 'Viper Entregas',
+                              icon: Icons.inventory,
+                              isActive: isEntregasActive,
+                              onChanged: (val) => setModalState(
+                                () => isEntregasActive = val ?? false,
                               ),
                             ),
 
-                            // ── Viper Moto ──────────────────────────────────
-                            Container(
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                border: Border.all(
-                                  color: Colors.black,
-                                  width: 2,
-                                ),
-                                borderRadius: BorderRadius.circular(12),
+                            // CARD 2: Moto (Renderiza se tiver 'moto' na lista)
+                            if (_veiculosCadastrados.contains('moto'))
+                              _buildPreferenceCard(
+                                title: 'Viper Moto',
+                                icon: Icons.motorcycle,
+                                isActive: isMotoActive,
+                                onChanged: (val) => setModalState(() {
+                                  isMotoActive = val ?? false;
+                                  if (isMotoActive) isCarroActive = false;
+                                }),
                               ),
-                              child: Stack(
-                                children: [
-                                  Align(
-                                    alignment: Alignment.topRight,
-                                    child: Checkbox(
-                                      value: moto,
-                                      activeColor: Colors.black,
-                                      checkColor: Colors.white,
-                                      side: const BorderSide(
-                                        color: Colors.black,
-                                        width: 2,
-                                      ),
-                                      onChanged: (v) => setModalState(() {
-                                        moto = v ?? false;
-                                        if (moto) carros = false;
-                                      }),
-                                    ),
-                                  ),
-                                  Center(
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: const [
-                                        Icon(
-                                          Icons.two_wheeler_rounded,
-                                          size: 36,
-                                          color: Colors.black,
-                                        ),
-                                        SizedBox(height: 8),
-                                        Text(
-                                          'Viper Moto',
-                                          style: TextStyle(
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.black,
-                                          ),
-                                          textAlign: TextAlign.center,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
 
-                            // ── Viper Carros ─────────────────────────────────
-                            Container(
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                border: Border.all(
-                                  color: Colors.black,
-                                  width: 2,
-                                ),
-                                borderRadius: BorderRadius.circular(12),
+                            // CARD 3: Carro (Renderiza se tiver 'carro' na lista)
+                            if (_veiculosCadastrados.contains('carro'))
+                              _buildPreferenceCard(
+                                title: 'Viper Carros',
+                                icon: Icons.directions_car,
+                                isActive: isCarroActive,
+                                onChanged: (val) => setModalState(() {
+                                  isCarroActive = val ?? false;
+                                  if (isCarroActive) isMotoActive = false;
+                                }),
                               ),
-                              child: Stack(
-                                children: [
-                                  Align(
-                                    alignment: Alignment.topRight,
-                                    child: Checkbox(
-                                      value: carros,
-                                      activeColor: Colors.black,
-                                      checkColor: Colors.white,
-                                      side: const BorderSide(
-                                        color: Colors.black,
-                                        width: 2,
-                                      ),
-                                      onChanged: (v) => setModalState(() {
-                                        carros = v ?? false;
-                                        if (carros) moto = false;
-                                      }),
-                                    ),
-                                  ),
-                                  Center(
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: const [
-                                        Icon(
-                                          Icons.directions_car_rounded,
-                                          size: 36,
-                                          color: Colors.black,
-                                        ),
-                                        SizedBox(height: 8),
-                                        Text(
-                                          'Viper Carros',
-                                          style: TextStyle(
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.black,
-                                          ),
-                                          textAlign: TextAlign.center,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
 
-                            // ── Placeholder (4º slot) ─────────────────────────
-                            Container(
-                              decoration: BoxDecoration(
-                                color: Colors.grey.shade300,
-                                borderRadius: BorderRadius.circular(12),
+                            // CARD 4: Preenchimento visual (para não deixar buraco no layout)
+                            if (_veiculosCadastrados.length == 2)
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade200,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
                               ),
-                            ),
                           ],
                         ),
                         const SizedBox(height: 20),
@@ -1163,9 +1034,9 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
                         Center(
                           child: ElevatedButton(
                             onPressed: () => setModalState(() {
-                              entregas = false;
-                              moto = false;
-                              carros = true;
+                              isEntregasActive = false;
+                              isMotoActive = false;
+                              isCarroActive = true;
                               aceitarDinheiro = true;
                               avaliacaoAtiva = false;
                               notaMinima = 4.5;
@@ -1195,6 +1066,54 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
           },
         );
       },
+    );
+  }
+
+  Widget _buildPreferenceCard({
+    required String title,
+    required IconData icon,
+    required bool isActive,
+    required ValueChanged<bool?> onChanged,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: Colors.black, width: 2),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Stack(
+        children: [
+          Align(
+            alignment: Alignment.topRight,
+            child: Checkbox(
+              value: isActive,
+              activeColor: Colors.black,
+              checkColor: Colors.white,
+              side: const BorderSide(color: Colors.black, width: 2),
+              onChanged: onChanged,
+            ),
+          ),
+          Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 36, color: Colors.black),
+                const SizedBox(height: 8),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
