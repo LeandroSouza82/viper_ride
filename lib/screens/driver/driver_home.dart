@@ -16,6 +16,7 @@ import '../../services/auth_service.dart';
 import '../../services/location_service.dart';
 import '../../services/viper_foreground_service.dart';
 import 'widgets/ride_request_alert.dart';
+import 'driver_settings.dart';
 
 /// Tela principal do motorista.
 ///
@@ -67,8 +68,15 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
   final _positionNotifier = ValueNotifier<geo.Position?>(null);
   final _rideRequestNotifier = ValueNotifier<RideRequest?>(null);
 
-  ValueNotifier<bool> get _isOnline => _onlineNotifier;
   final _sheetController = DraggableScrollableController();
+  final _sheetExtentNotifier = ValueNotifier<double>(0.12);
+  bool _isEarningsExpanded = false;
+  bool _isEarningsVisible = true;
+  final double _dailyEarnings = 154.20;
+  final int _tripsCompleted = 8;
+  final int _points = 120;
+  final PageController _pageController = PageController();
+  int _currentPage = 0;
 
   StreamSubscription<geo.Position>? _positionSub;
   MapboxMap? _mapController;
@@ -676,9 +684,524 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
     );
   }
 
+  void _showPreferencesSheet(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        // Estado local do modal: não afeta o State principal.
+        var entregas = false;
+        var moto = false;
+        var carros = true;
+        var aceitarDinheiro = true;
+        var avaliacaoAtiva = false;
+        var notaMinima = 4.5;
+
+        return StatefulBuilder(
+          builder: (ctx, setModalState) {
+            return DraggableScrollableSheet(
+              expand: false,
+              initialChildSize: 0.9,
+              minChildSize: 0.5,
+              maxChildSize: 0.95,
+              builder: (_, scrollController) => Column(
+                children: [
+                  // ── Header ──────────────────────────────────────────────
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 20.0, top: 8.0),
+                    child: Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(
+                            Icons.arrow_back,
+                            color: Colors.black,
+                            size: 28,
+                          ),
+                          onPressed: () => Navigator.of(ctx).pop(),
+                        ),
+                        const SizedBox(width: 12),
+                        const Text(
+                          'Preferências',
+                          style: TextStyle(
+                            fontSize: 26,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // ── Conteúdo scrollável ─────────────────────────────────
+                  Expanded(
+                    child: ListView(
+                      controller: scrollController,
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+                      children: [
+                        // Banner informativo
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 12,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFF8E1),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Text(
+                            'Filtrar viagens com base nas preferências',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFF7B6000),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+
+                        // Título da seção
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'Opções',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () {
+                                showDialog<void>(
+                                  context: context,
+                                  builder: (BuildContext dialogContext) {
+                                    return AlertDialog(
+                                      backgroundColor: Colors.white,
+                                      surfaceTintColor: Colors.transparent,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(16),
+                                      ),
+                                      title: const Text(
+                                        'Como funciona?',
+                                        style: TextStyle(
+                                          color: Colors.black,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      content: const SingleChildScrollView(
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              '📦 Viper Entregas',
+                                              style: TextStyle(
+                                                color: Colors.black,
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 16,
+                                              ),
+                                            ),
+                                            SizedBox(height: 4),
+                                            Text(
+                                              'Transporte de pacotes e delivery. Fature com agilidade.',
+                                              style: TextStyle(
+                                                color: Colors.black87,
+                                              ),
+                                            ),
+                                            SizedBox(height: 16),
+                                            Text(
+                                              '🏍️ Viper Moto',
+                                              style: TextStyle(
+                                                color: Colors.black,
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 16,
+                                              ),
+                                            ),
+                                            SizedBox(height: 4),
+                                            Text(
+                                              'Transporte rápido. Fuja do trânsito com taxa mínima justa.',
+                                              style: TextStyle(
+                                                color: Colors.black87,
+                                              ),
+                                            ),
+                                            SizedBox(height: 16),
+                                            Text(
+                                              '🚗 Viper Carros',
+                                              style: TextStyle(
+                                                color: Colors.black,
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 16,
+                                              ),
+                                            ),
+                                            SizedBox(height: 4),
+                                            Text(
+                                              'Conforto e lucro com nossa taxa fixa de 18%.',
+                                              style: TextStyle(
+                                                color: Colors.black87,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () =>
+                                              Navigator.of(dialogContext).pop(),
+                                          child: const Text(
+                                            'Entendi',
+                                            style: TextStyle(
+                                              color: Colors.black,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    );
+                                  },
+                                );
+                              },
+                              style: TextButton.styleFrom(
+                                foregroundColor: Colors.black,
+                                padding: EdgeInsets.zero,
+                              ),
+                              child: const Text(
+                                'Saiba mais',
+                                style: TextStyle(
+                                  decoration: TextDecoration.underline,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+
+                        // Grid de opções
+                        GridView.count(
+                          crossAxisCount: 2,
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 12,
+                          childAspectRatio: 1.1,
+                          children: [
+                            // ── Viper Entregas ──────────────────────────────
+                            Container(
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                border: Border.all(
+                                  color: Colors.black,
+                                  width: 2,
+                                ),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Stack(
+                                children: [
+                                  Align(
+                                    alignment: Alignment.topRight,
+                                    child: Checkbox(
+                                      value: entregas,
+                                      activeColor: Colors.black,
+                                      checkColor: Colors.white,
+                                      side: const BorderSide(
+                                        color: Colors.black,
+                                        width: 2,
+                                      ),
+                                      onChanged: (v) => setModalState(
+                                        () => entregas = v ?? false,
+                                      ),
+                                    ),
+                                  ),
+                                  Center(
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: const [
+                                        Icon(
+                                          Icons.inventory_2_outlined,
+                                          size: 36,
+                                          color: Colors.black,
+                                        ),
+                                        SizedBox(height: 8),
+                                        Text(
+                                          'Viper Entregas',
+                                          style: TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.black,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            // ── Viper Moto ──────────────────────────────────
+                            Container(
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                border: Border.all(
+                                  color: Colors.black,
+                                  width: 2,
+                                ),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Stack(
+                                children: [
+                                  Align(
+                                    alignment: Alignment.topRight,
+                                    child: Checkbox(
+                                      value: moto,
+                                      activeColor: Colors.black,
+                                      checkColor: Colors.white,
+                                      side: const BorderSide(
+                                        color: Colors.black,
+                                        width: 2,
+                                      ),
+                                      onChanged: (v) => setModalState(() {
+                                        moto = v ?? false;
+                                        if (moto) carros = false;
+                                      }),
+                                    ),
+                                  ),
+                                  Center(
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: const [
+                                        Icon(
+                                          Icons.two_wheeler_rounded,
+                                          size: 36,
+                                          color: Colors.black,
+                                        ),
+                                        SizedBox(height: 8),
+                                        Text(
+                                          'Viper Moto',
+                                          style: TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.black,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            // ── Viper Carros ─────────────────────────────────
+                            Container(
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                border: Border.all(
+                                  color: Colors.black,
+                                  width: 2,
+                                ),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Stack(
+                                children: [
+                                  Align(
+                                    alignment: Alignment.topRight,
+                                    child: Checkbox(
+                                      value: carros,
+                                      activeColor: Colors.black,
+                                      checkColor: Colors.white,
+                                      side: const BorderSide(
+                                        color: Colors.black,
+                                        width: 2,
+                                      ),
+                                      onChanged: (v) => setModalState(() {
+                                        carros = v ?? false;
+                                        if (carros) moto = false;
+                                      }),
+                                    ),
+                                  ),
+                                  Center(
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: const [
+                                        Icon(
+                                          Icons.directions_car_rounded,
+                                          size: 36,
+                                          color: Colors.black,
+                                        ),
+                                        SizedBox(height: 8),
+                                        Text(
+                                          'Viper Carros',
+                                          style: TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.black,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            // ── Placeholder (4º slot) ─────────────────────────
+                            Container(
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade300,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+
+                        // Divisor
+                        Divider(color: Colors.grey.shade300, thickness: 1),
+
+                        // Header Filtros
+                        const Padding(
+                          padding: EdgeInsets.only(top: 12, bottom: 4),
+                          child: Text(
+                            'Filtros da viagem',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black,
+                            ),
+                          ),
+                        ),
+
+                        // Toggle Dinheiro
+                        SwitchListTile(
+                          activeThumbColor: Colors.black,
+                          secondary: const Icon(
+                            Icons.money,
+                            color: Colors.black,
+                          ),
+                          title: const Text(
+                            'Aceitar dinheiro',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black,
+                            ),
+                          ),
+                          value: aceitarDinheiro,
+                          onChanged: (val) =>
+                              setModalState(() => aceitarDinheiro = val),
+                        ),
+
+                        // Toggle Avaliação + Slider dinâmico
+                        Column(
+                          children: [
+                            SwitchListTile(
+                              activeThumbColor: Colors.black,
+                              secondary: const Icon(
+                                Icons.people,
+                                color: Colors.black,
+                              ),
+                              title: const Text(
+                                'Avaliação do usuário',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.black,
+                                ),
+                              ),
+                              subtitle: const Text(
+                                'Defina uma avaliação mínima de usuário para solicitações.',
+                                style: TextStyle(color: Colors.black87),
+                              ),
+                              value: avaliacaoAtiva,
+                              onChanged: (val) =>
+                                  setModalState(() => avaliacaoAtiva = val),
+                            ),
+                            if (avaliacaoAtiva)
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16.0,
+                                ),
+                                child: Column(
+                                  children: [
+                                    Text(
+                                      'Nota mínima exigida: ${notaMinima.toStringAsFixed(1)} ⭐️',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.black,
+                                      ),
+                                    ),
+                                    Slider(
+                                      activeColor: Colors.black,
+                                      inactiveColor: Colors.grey.shade300,
+                                      value: notaMinima,
+                                      min: 3.0,
+                                      max: 5.0,
+                                      divisions: 20,
+                                      label: notaMinima.toStringAsFixed(1),
+                                      onChanged: (val) =>
+                                          setModalState(() => notaMinima = val),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Botão Redefinir
+                        Center(
+                          child: ElevatedButton(
+                            onPressed: () => setModalState(() {
+                              entregas = false;
+                              moto = false;
+                              carros = true;
+                              aceitarDinheiro = true;
+                              avaliacaoAtiva = false;
+                              notaMinima = 4.5;
+                            }),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.grey.shade200,
+                              foregroundColor: Colors.black,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 40,
+                                vertical: 14,
+                              ),
+                              shape: const StadiumBorder(),
+                              elevation: 0,
+                            ),
+                            child: const Text(
+                              'Redefinir',
+                              style: TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Future<void> _goOffline() async {
     await _disposeDriverMode();
     _onlineNotifier.value = false; // sem setState — mapa não é tocado
+    _collapseSheet();
   }
 
   @override
@@ -710,7 +1233,9 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
     _canShowMapNotifier.dispose();
     _positionNotifier.dispose();
     _rideRequestNotifier.dispose();
+    _sheetExtentNotifier.dispose();
     _sheetController.dispose();
+    _pageController.dispose();
     // Destrói o renderer nativo do Mapbox antes de liberar a tela
     // Evita lockHardwareCanvas quando o widget é removido da árvore
     _mapController?.dispose();
@@ -908,45 +1433,335 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
             ),
           ),
 
-          // ── Camada 2: Controle de disponibilidade ─────────────────────
-          // OFFLINE → só o botão pílula branco flutuando a 40 px do fundo.
-          // ONLINE  → DraggableScrollableSheet nascendo do rodapé.
-          // O ValueListenableBuilder reconstrói APENAS esta camada; o mapa
-          // e os botões superiores nunca são tocados.
-          ValueListenableBuilder<bool>(
-            valueListenable: _isOnline,
-            builder: (context, isOnline, _) {
-              if (!isOnline) {
-                // Estado offline: pílula branca centralizada, 40 px do fundo
-                return Positioned(
-                  left: 24,
-                  right: 24,
-                  bottom: 40,
-                  child: SafeArea(
-                    top: false,
-                    child: Center(child: _StartPillButton(onTap: _goOnline)),
-                  ),
+          // ── Pílula / Carrossel de Ganhos ────────────────────────────────
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 16,
+            left: 16,
+            right: 16,
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              transitionBuilder: (Widget child, Animation<double> animation) {
+                return SizeTransition(
+                  sizeFactor: animation,
+                  child: FadeTransition(opacity: animation, child: child),
                 );
-              }
+              },
+              child: !_isEarningsExpanded
+                  // ESTADO 1: PÍLULA RECOLHIDA
+                  ? GestureDetector(
+                      key: const ValueKey('collapsed'),
+                      onTap: () => setState(() => _isEarningsExpanded = true),
+                      child: Center(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 12,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(30),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Colors.black26,
+                                blurRadius: 8,
+                                offset: Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Text(
+                            _isEarningsVisible
+                                ? 'R\$ ${_dailyEarnings.toStringAsFixed(2).replaceAll('.', ',')}'
+                                : 'R\$ •••••',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black,
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                  // ESTADO 2: CARROSSEL EXPANDIDO
+                  : GestureDetector(
+                      key: const ValueKey('expanded'),
+                      onTap: () => setState(() => _isEarningsExpanded = false),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            height: 220,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(20),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Colors.black26,
+                                  blurRadius: 10,
+                                  offset: Offset(0, 5),
+                                ),
+                              ],
+                            ),
+                            child: PageView(
+                              controller: _pageController,
+                              onPageChanged: (int page) =>
+                                  setState(() => _currentPage = page),
+                              children: [
+                                // CARD 1: RESUMO
+                                Stack(
+                                  children: [
+                                    Positioned(
+                                      top: 4,
+                                      left: 4,
+                                      child: IconButton(
+                                        icon: Icon(
+                                          _isEarningsVisible
+                                              ? Icons.visibility
+                                              : Icons.visibility_off,
+                                          color: Colors.black,
+                                        ),
+                                        onPressed: () => setState(
+                                          () => _isEarningsVisible =
+                                              !_isEarningsVisible,
+                                        ),
+                                      ),
+                                    ),
+                                    Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 24,
+                                            vertical: 8,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.black,
+                                            borderRadius: BorderRadius.circular(
+                                              30,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            _isEarningsVisible
+                                                ? 'R\$ ${_dailyEarnings.toStringAsFixed(2).replaceAll('.', ',')}'
+                                                : 'R\$ •••••',
+                                            style: const TextStyle(
+                                              fontSize: 24,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.greenAccent,
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        const Text(
+                                          'HOJE',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.black54,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 16),
+                                        Text(
+                                          '$_tripsCompleted viagem concluída',
+                                          style: const TextStyle(
+                                            fontSize: 18,
+                                            color: Colors.black,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: [
+                                            const Icon(
+                                              Icons.diamond,
+                                              color: Colors.blue,
+                                              size: 16,
+                                            ),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              '$_points pontos',
+                                              style: const TextStyle(
+                                                fontSize: 16,
+                                                color: Colors.black54,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const Spacer(),
+                                        TextButton(
+                                          onPressed: () {},
+                                          child: const Text(
+                                            'VER RESUMO SEMANAL',
+                                            style: TextStyle(
+                                              color: Colors.blue,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
 
-              // Estado online: sheet arrastável ancorada no rodapé.
-              // Positioned.fill dá ao DraggableScrollableSheet a altura total
-              // da tela para trabalhar; expand: true faz o sheet ocupar esse
-              // espaço e renderizar o conteúdo colado na borda inferior.
-              return Positioned.fill(
-                child: DraggableScrollableSheet(
-                  controller: _sheetController,
-                  expand: true,
-                  initialChildSize: 0.12,
-                  minChildSize: 0.12,
-                  maxChildSize: 1.0,
-                  snap: true,
-                  snapSizes: const [0.12, 0.45, 1.0],
-                  builder: (context, scrollController) => _DriverStatusSheet(
-                    scrollController: scrollController,
-                    onGoOffline: _goOffline,
-                  ),
+                                // CARD 2: MISSÕES
+                                const Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.emoji_events,
+                                        size: 48,
+                                        color: Colors.orange,
+                                      ),
+                                      SizedBox(height: 16),
+                                      Text(
+                                        'Sem missão no momento',
+                                        style: TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.black,
+                                        ),
+                                      ),
+                                      SizedBox(height: 8),
+                                      Text(
+                                        'Fique online para receber novas missões.',
+                                        style: TextStyle(color: Colors.black54),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+
+                                // CARD 3: ÚTIMA CORRIDA
+                                const Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.check_circle,
+                                        size: 48,
+                                        color: Colors.green,
+                                      ),
+                                      SizedBox(height: 16),
+                                      Text(
+                                        'Última Viagem',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          color: Colors.black54,
+                                        ),
+                                      ),
+                                      Text(
+                                        'R\$ 15,50',
+                                        style: TextStyle(
+                                          fontSize: 24,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.black,
+                                        ),
+                                      ),
+                                      SizedBox(height: 8),
+                                      Text(
+                                        'Hoje, 14:30 • Viper Moto',
+                                        style: TextStyle(
+                                          color: Colors.black87,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          // Indicadores
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: List.generate(3, (index) {
+                              return Container(
+                                margin: const EdgeInsets.symmetric(
+                                  horizontal: 4,
+                                ),
+                                width: 8,
+                                height: 8,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: _currentPage == index
+                                      ? Colors.white
+                                      : Colors.white54,
+                                  border: Border.all(
+                                    color: Colors.black26,
+                                    width: 1,
+                                  ),
+                                ),
+                              );
+                            }),
+                          ),
+                        ],
+                      ),
+                    ),
+            ),
+          ),
+
+          // ── Camada 2: Gaveta arrastável — sempre presente (Online e Offline) ──
+          // O DraggableScrollableSheet está sempre na árvore (snaps [0.12, 0.45, 1.0]).
+          // O botão COMEÇAR / barra de status vive DENTRO da gaveta, como primeiro
+          // item da coluna scrollável. Isso faz o botão "subir junto com a barra
+          // preta" ao arrastar — sem nenhum widget flutuante fora da gaveta.
+          // NotificationListener captura DraggableScrollableNotification
+          // e atualiza _sheetExtentNotifier sem tocar no mapa ou no estado.
+          NotificationListener<DraggableScrollableNotification>(
+            onNotification: (notification) {
+              _sheetExtentNotifier.value = notification.extent;
+              return false; // permite que a notificação continue subindo
+            },
+            child: Positioned.fill(
+              child: DraggableScrollableSheet(
+                controller: _sheetController,
+                expand: true,
+                initialChildSize: 0.12,
+                minChildSize: 0.12,
+                maxChildSize: 1.0,
+                snap: true,
+                snapSizes: const [0.12, 0.45, 1.0],
+                builder: (context, scrollController) => _UnifiedDriverSheet(
+                  scrollController: scrollController,
+                  onlineNotifier: _onlineNotifier,
+                  onGoOffline: _goOffline,
+                  onShowPreferences: () => _showPreferencesSheet(context),
                 ),
+              ),
+            ),
+          ),
+
+          // ── Camada 2b: Botão COMEÇAR — acompanha a gaveta em tempo real ──
+          // ValueListenableBuilder duplo: extent (posição contínua da gaveta)
+          // e online (aparece/desaparece). O botão sobe colado à borda superior
+          // da gaveta e desvanece suavemente ao passar de 0.45.
+          ValueListenableBuilder<double>(
+            valueListenable: _sheetExtentNotifier,
+            builder: (context, extent, _) {
+              final screenH = MediaQuery.of(context).size.height;
+              final currentBottom = (extent * screenH) + 10.0;
+              final opacity = extent > 0.45 ? 0.0 : 1.0;
+              return ValueListenableBuilder<bool>(
+                valueListenable: _onlineNotifier,
+                builder: (context, isOnline, _) {
+                  if (isOnline) return const SizedBox.shrink();
+                  return Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: currentBottom,
+                    child: IgnorePointer(
+                      ignoring: opacity == 0.0,
+                      child: AnimatedOpacity(
+                        opacity: opacity,
+                        duration: const Duration(milliseconds: 200),
+                        child: Center(
+                          child: _StartPillButton(onTap: _goOnline),
+                        ),
+                      ),
+                    ),
+                  );
+                },
               );
             },
           ),
@@ -1043,122 +1858,190 @@ class _StartPillButton extends StatelessWidget {
   }
 }
 
-/// Gaveta inferior exibida SOMENTE quando o motorista está online.
+/// Gaveta unificada — presente em modo Online e Offline.
 ///
-/// 12 % (mínimo): drag handle + [⚙] Você está online [≡]
-/// 45 % / 100 %: revela o botão vermelho FICAR OFFLINE
-class _DriverStatusSheet extends StatelessWidget {
-  const _DriverStatusSheet({
+/// 0.12 (mínimo) : header fixo [⚙ | pílula + status | ☰].
+/// 0.45 / 1.0    : botão FICAR OFFLINE (vermelho se online, cinza se offline)
+///                 + placeholder de métricas.
+class _UnifiedDriverSheet extends StatelessWidget {
+  const _UnifiedDriverSheet({
     required this.scrollController,
+    required this.onlineNotifier,
     required this.onGoOffline,
+    required this.onShowPreferences,
   });
 
   final ScrollController scrollController;
+  final ValueNotifier<bool> onlineNotifier;
   final VoidCallback onGoOffline;
+  final VoidCallback onShowPreferences;
 
   @override
   Widget build(BuildContext context) {
     final bottomPad = MediaQuery.of(context).padding.bottom;
 
-    return Container(
-      decoration: const BoxDecoration(
-        color: Color(0xFF121212),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: SingleChildScrollView(
-        controller: scrollController,
-        physics: const ClampingScrollPhysics(),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      child: Container(
+        color: const Color(0xFF121212),
+        child: Stack(
           children: [
-            // ── Drag handle ─────────────────────────────────────────────
-            const SizedBox(height: 10),
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF424242),
-                  borderRadius: BorderRadius.circular(999),
+            SingleChildScrollView(
+              controller: scrollController,
+              physics: const ClampingScrollPhysics(),
+              child: ValueListenableBuilder<bool>(
+                valueListenable: onlineNotifier,
+                builder: (context, isOnline, _) => Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // ── Header fixo: [⚙] | pílula + status | [☰] ────────────────
+                    // Os ícones nas pontas são sempre visíveis (online e offline).
+                    // O texto central só aparece quando online.
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          IconButton(
+                            icon: const Icon(
+                              Icons.settings_rounded,
+                              color: Colors.white,
+                            ),
+                            onPressed: onShowPreferences,
+                          ),
+                          Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 40,
+                                height: 4,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF424242),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                              ),
+                              if (isOnline) ...[
+                                const SizedBox(height: 10),
+                                const Text(
+                                  'Você está online',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                          IconButton(
+                            icon: const Icon(
+                              Icons.menu_rounded,
+                              color: Colors.white,
+                            ),
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      const DriverSettingsScreen(),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+
+                    // ── Conteúdo expandido (visível a partir de ~0.45) ──────────
+                    Padding(
+                      padding: EdgeInsets.fromLTRB(20, 28, 20, 24 + bottomPad),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          // FICAR OFFLINE: vermelho+habilitado (online) ou cinza+desabilitado (offline)
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: isOnline
+                                    ? Colors.red
+                                    : const Color(0xFF424242),
+                                foregroundColor: Colors.white,
+                                disabledForegroundColor: Colors.white
+                                    .withValues(alpha: 0.5),
+                                disabledBackgroundColor: const Color(
+                                  0xFF424242,
+                                ),
+                                elevation: 0,
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 18,
+                                ),
+                                shape: const StadiumBorder(),
+                              ),
+                              onPressed: isOnline ? onGoOffline : null,
+                              child: const Text(
+                                'FICAR OFFLINE',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          // Espaço reservado para ganhos do dia / métricas futuras
+                          Container(
+                            height: 80,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF1E1E1E),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Center(
+                              child: Text(
+                                isOnline
+                                    ? 'Aguardando novas corridas...'
+                                    : 'Você está offline',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: Color(0xFF5A5A5A),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
-            const SizedBox(height: 16),
-
-            // ── Linha de status: ícone | texto | ícone ──────────────────
-            // Visível no snap mínimo (12 %). Imutável — sem rebuild.
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  _SheetIconButton(icon: Icons.tune_rounded, onTap: () {}),
-                  const Text(
-                    'Você está online',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  _SheetIconButton(
-                    icon: Icons.format_list_bulleted_rounded,
-                    onTap: () {},
-                  ),
-                ],
-              ),
-            ),
-
-            // ── Conteúdo expandido (visível a partir de 45 %) ────────────
-            Padding(
-              padding: EdgeInsets.fromLTRB(20, 28, 20, 24 + bottomPad),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(vertical: 18),
-                        shape: const StadiumBorder(),
-                      ),
-                      onPressed: onGoOffline,
-                      child: const Text(
-                        'FICAR OFFLINE',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.5,
-                        ),
+            // ── Barra de radar (online only) ─────────────────────────────────
+            // Colada no topo absoluto da gaveta, height 3 px.
+            // ClipRRect pai garante que ela siga a curva das bordas arredondadas.
+            ValueListenableBuilder<bool>(
+              valueListenable: onlineNotifier,
+              builder: (context, isOnline, _) {
+                if (!isOnline) return const SizedBox.shrink();
+                return Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: SizedBox(
+                    height: 3.0,
+                    child: LinearProgressIndicator(
+                      backgroundColor: Colors.transparent,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        const Color(0xFF2ECC71),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 20),
-                  // Espaço reservado para ganhos do dia / métricas futuras
-                  Container(
-                    height: 80,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1E1E1E),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: const Center(
-                      child: Text(
-                        'Aguardando novas corridas...',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Color(0xFF5A5A5A),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+                );
+              },
             ),
           ],
         ),
@@ -1167,26 +2050,4 @@ class _DriverStatusSheet extends StatelessWidget {
   }
 }
 
-/// Botão de ícone circular usado na linha de status da gaveta.
-class _SheetIconButton extends StatelessWidget {
-  const _SheetIconButton({required this.icon, required this.onTap});
-
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 44,
-        height: 44,
-        decoration: BoxDecoration(
-          color: const Color(0xFF1E1E1E),
-          borderRadius: BorderRadius.circular(22),
-        ),
-        child: Icon(icon, color: Colors.white, size: 22),
-      ),
-    );
-  }
-}
+// ── Fim dos widgets internos ────────────────────────────────────────────────────
