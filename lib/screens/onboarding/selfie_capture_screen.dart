@@ -1,18 +1,15 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'process_document_screen.dart';
 
-class CameraCaptureScreen extends StatefulWidget {
-  final bool isFrente; // NOVO
-  const CameraCaptureScreen({super.key, required this.isFrente});
+class SelfieCaptureScreen extends StatefulWidget {
+  const SelfieCaptureScreen({super.key});
 
   @override
-  State<CameraCaptureScreen> createState() => _CameraCaptureScreenState();
+  State<SelfieCaptureScreen> createState() => _SelfieCaptureScreenState();
 }
 
-class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
+class _SelfieCaptureScreenState extends State<SelfieCaptureScreen> {
   CameraController? _controller;
-  List<CameraDescription>? _cameras;
   bool _isInitialized = false;
 
   @override
@@ -22,17 +19,21 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
   }
 
   Future<void> _initializeCamera() async {
-    _cameras = await availableCameras();
-    if (_cameras != null && _cameras!.isNotEmpty) {
-      _controller = CameraController(
-        _cameras![0],
-        ResolutionPreset.high,
-        enableAudio: false,
-      );
-      await _controller!.initialize();
-      if (!mounted) return;
-      setState(() => _isInitialized = true);
-    }
+    final cameras = await availableCameras();
+    // Busca a câmera frontal. Se não achar, usa a primeira que tiver.
+    final frontCamera = cameras.firstWhere(
+      (camera) => camera.lensDirection == CameraLensDirection.front,
+      orElse: () => cameras.first,
+    );
+
+    _controller = CameraController(
+      frontCamera,
+      ResolutionPreset.high,
+      enableAudio: false,
+    );
+    await _controller!.initialize();
+    if (!mounted) return;
+    setState(() => _isInitialized = true);
   }
 
   @override
@@ -54,13 +55,12 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // 1. Preview da Câmera preenchendo a tela
           SizedBox.expand(child: CameraPreview(_controller!)),
 
-          // 2. Máscara de Recorte (O "Furo" no meio)
+          // Máscara Redonda para o Rosto
           ColorFiltered(
             colorFilter: ColorFilter.mode(
-              Colors.black.withValues(alpha: 0.7),
+              Colors.black.withValues(alpha: 0.8),
               BlendMode.srcOut,
             ),
             child: Stack(
@@ -74,11 +74,11 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
                 Align(
                   alignment: Alignment.center,
                   child: Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 30),
-                    height: 220, // Proporção de um documento
-                    decoration: BoxDecoration(
+                    height: 300,
+                    width: 300,
+                    decoration: const BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
+                      shape: BoxShape.circle,
                     ),
                   ),
                 ),
@@ -86,20 +86,19 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
             ),
           ),
 
-          // 3. Moldura Branca (Borda do retângulo)
+          // Borda Redonda Branca
           Align(
             alignment: Alignment.center,
             child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 30),
-              height: 220,
+              height: 300,
+              width: 300,
               decoration: BoxDecoration(
                 border: Border.all(color: Colors.white, width: 3),
-                borderRadius: BorderRadius.circular(16),
+                shape: BoxShape.circle,
               ),
             ),
           ),
 
-          // 4. Textos e Botões
           SafeArea(
             child: Column(
               children: [
@@ -115,70 +114,46 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
                         ),
                         onPressed: () => Navigator.pop(context),
                       ),
-                      Expanded(
+                      const Expanded(
                         child: Text(
-                          widget.isFrente
-                              ? 'Frente da CNH'
-                              : 'Verso da CNH', // DINÂMICO
+                          'Foto de Perfil',
                           textAlign: TextAlign.center,
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: Colors.white,
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                       ),
-                      const SizedBox(
-                        width: 48,
-                      ), // Espaçador para centralizar o texto
+                      const SizedBox(width: 48),
                     ],
                   ),
                 ),
                 const Spacer(),
                 const Text(
-                  'Posicione o documento dentro da moldura',
+                  'Encaixe seu rosto no círculo',
                   style: TextStyle(color: Colors.white, fontSize: 16),
                 ),
                 const SizedBox(height: 30),
-                // Botão de Captura
                 GestureDetector(
                   onTap: () async {
                     try {
                       final image = await _controller!.takePicture();
-                      debugPrint('Foto capturada: ${image.path}');
-
                       if (!context.mounted) return;
 
-                      // 1. Vai para a tela de Processo e ESPERA o resultado (true ou false)
-                      final result = await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => ProcessDocumentScreen(
-                            imagePath: image.path,
-                            isFrente: widget.isFrente,
-                          ),
+                      // Mostra um aviso rápido e devolve o caminho da imagem
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Selfie capturada com sucesso! ✅'),
+                          backgroundColor: Colors.green,
                         ),
                       );
-
-                      if (!context.mounted) return;
-
-                      // Enriquecer o resultado com o caminho da imagem para que o
-                      // Checklist possa subir o arquivo em background sem perder
-                      // a referência ao arquivo local.
-                      if (result is Map) {
-                        final Map enriched = Map.from(result);
-                        enriched['imagePath'] = image.path;
-                        Navigator.pop(context, enriched);
-                      } else if (result == true) {
-                        Navigator.pop(context, {
-                          'success': true,
-                          'imagePath': image.path,
-                        });
-                      } else {
-                        Navigator.pop(context, result);
-                      }
+                      Navigator.pop(context, {
+                        'success': true,
+                        'imagePath': image.path,
+                      });
                     } catch (e) {
-                      debugPrint('Erro ao tirar foto: $e');
+                      debugPrint('Erro na selfie: $e');
                     }
                   },
                   child: Container(

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'documents_checklist_screen.dart';
 
 class OtpVerificationScreen extends StatefulWidget {
@@ -16,6 +17,43 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   void dispose() {
     _otpController.dispose();
     super.dispose();
+  }
+
+  Future<void> _verificarCodigo() async {
+    // Bypass de teste: código especial que pula a verificação real
+    if (_otpController.text == '123456') {
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const DocumentsChecklistScreen(),
+        ),
+      );
+      return;
+    }
+
+    try {
+      final response = await Supabase.instance.client.auth.verifyOTP(
+        phone:
+            '+5548996525008', // Força o número aqui só para esse teste rápido
+        token: _otpController.text, // Onde você digita o 123456
+        type: OtpType.sms,
+      );
+
+      if (response.session != null) {
+        // LOGIN OFICIAL! Agora o RLS vai te reconhecer.
+        if (!mounted) return;
+        Navigator.pushReplacementNamed(context, '/checklist');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Código incorreto: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override
@@ -100,13 +138,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                 height: 56,
                 child: ElevatedButton(
                   onPressed: () {
-                    // Navega para a tela de documentos após a "verificação"
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const DocumentsChecklistScreen(),
-                      ),
-                    );
+                    _verificarCodigo();
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.black,
