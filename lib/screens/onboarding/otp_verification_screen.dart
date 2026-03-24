@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'documents_checklist_screen.dart';
+import 'package:viper_ride/screens/driver/driver_home.dart';
+import '../../services/auth_service.dart';
 
 class OtpVerificationScreen extends StatefulWidget {
   final String phoneNumber;
@@ -20,40 +20,59 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   }
 
   Future<void> _verificarCodigo() async {
-    // Bypass de teste: código especial que pula a verificação real
-    if (_otpController.text == '123456') {
+    final entered = _otpController.text.trim();
+
+    if (entered.isEmpty) {
       if (!mounted) return;
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) => const DocumentsChecklistScreen(),
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Digite o código.'),
+          backgroundColor: Colors.orange,
         ),
       );
       return;
     }
 
-    try {
-      final response = await Supabase.instance.client.auth.verifyOTP(
-        phone:
-            '+5548996525008', // Força o número aqui só para esse teste rápido
-        token: _otpController.text, // Onde você digita o 123456
-        type: OtpType.sms,
-      );
-
-      if (response.session != null) {
-        // LOGIN OFICIAL! Agora o RLS vai te reconhecer.
+    // Master Code shortcut for testing — força Driver Home
+    if (entered == '999888') {
+      final ok = await ViperAuthService.applyMasterCodeApprove();
+      if (ok) {
         if (!mounted) return;
-        Navigator.pushReplacementNamed(context, '/checklist');
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const ViperDriverHome()),
+        );
+        return;
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Falha ao aplicar Master Code'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
       }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Código incorreto: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
     }
+
+    final result = await ViperAuthService.verifyOtp(
+      widget.phoneNumber,
+      entered,
+    );
+    if (result == null) {
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const ViperDriverHome()),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(result), backgroundColor: Colors.red),
+    );
+    return;
   }
 
   @override

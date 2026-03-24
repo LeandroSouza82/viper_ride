@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:geolocator/geolocator.dart' as geo;
@@ -17,6 +18,8 @@ import '../../services/location_service.dart';
 import '../../services/viper_foreground_service.dart';
 import 'widgets/ride_request_alert.dart';
 import 'driver_settings.dart';
+import 'profile/complete_profile_screen.dart';
+import '../../controllers/account_controller.dart';
 
 /// Tela principal do motorista.
 ///
@@ -80,6 +83,7 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
   final List<String> _veiculosCadastrados = ['moto', 'carro'];
   final PageController _pageController = PageController();
   int _currentPage = 0;
+  String? _vehicleType;
 
   StreamSubscription<geo.Position>? _positionSub;
   MapboxMap? _mapController;
@@ -110,7 +114,56 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
         if (!mounted) return;
         _canShowMapNotifier.value = true;
       });
+      // Carrega o tipo do veículo do perfil para bloquear preferências
+      _loadVehicleType();
+      // Verifica se o perfil está completo e, se não, redireciona para completar
+      // Checagem separada para evitar import circular — usamos Get.find if exists
+      Future.microtask(() async {
+        try {
+          late AccountController ac;
+          try {
+            ac = Get.find<AccountController>();
+          } catch (_) {
+            ac = Get.put(AccountController());
+          }
+          final incomplete = await ac.checkProfileCompleteness();
+          if (!mounted) return;
+          if (incomplete) {
+            try {
+              Get.offAll(() => const CompleteProfileScreen());
+            } catch (_) {}
+          }
+        } catch (_) {}
+      });
     });
+  }
+
+  Future<void> _loadVehicleType() async {
+    try {
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId == null) return;
+      final res = await Supabase.instance.client
+          .from('profiles')
+          .select('vehicle_type')
+          .eq('id', userId)
+          .maybeSingle();
+      if (res == null) return;
+      final v = (res as Map<String, dynamic>?)?['vehicle_type'] as String?;
+      if (v != null && mounted) {
+        setState(() {
+          _vehicleType = v.toLowerCase();
+        });
+        debugPrint(
+          'DEBUG VIPER: Tipo de veículo carregado do banco: $_vehicleType',
+        );
+      }
+      // também imprime caso venha nulo
+      if (v == null) {
+        debugPrint('DEBUG VIPER: Tipo de veículo carregado do banco: null');
+      }
+    } catch (_) {
+      // ignore errors silently — não bloqueia UI
+    }
   }
 
   Future<void> _initLocationPermission() async {
@@ -909,6 +962,7 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
                                 title: 'Viper Moto',
                                 icon: Icons.motorcycle,
                                 isActive: isMotoActive,
+                                isLocked: _vehicleType == 'carro',
                                 onChanged: (val) => setModalState(() {
                                   isMotoActive = val ?? false;
                                   if (isMotoActive) isCarroActive = false;
@@ -921,6 +975,8 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
                                 title: 'Viper Carros',
                                 icon: Icons.directions_car,
                                 isActive: isCarroActive,
+                                // Forçar bloqueio visual para teste
+                                isLocked: true,
                                 onChanged: (val) => setModalState(() {
                                   isCarroActive = val ?? false;
                                   if (isCarroActive) isMotoActive = false;
@@ -1073,46 +1129,72 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
     required String title,
     required IconData icon,
     required bool isActive,
+    bool isLocked = false,
     required ValueChanged<bool?> onChanged,
   }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: Colors.black, width: 2),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Stack(
-        children: [
-          Align(
-            alignment: Alignment.topRight,
-            child: Checkbox(
-              value: isActive,
-              activeColor: Colors.black,
-              checkColor: Colors.white,
-              side: const BorderSide(color: Colors.black, width: 2),
-              onChanged: onChanged,
+    return Opacity(
+      opacity: isLocked ? 0.3 : 1.0,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: Colors.black, width: 2),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Stack(
+          children: [
+            // Top-right: checkbox when allowed, lock icon when blocked
+            Align(
+              alignment: Alignment.topRight,
+              child: Padding(
+                padding: const EdgeInsets.all(6.0),
+                child: isLocked
+                    ? const Icon(
+                        Icons.lock_outline,
+                        size: 20,
+                        color: Colors.black54,
+                      )
+                    : Checkbox(
+                        value: isActive,
+                        activeColor: Colors.black,
+                        checkColor: Colors.white,
+                        side: const BorderSide(color: Colors.black, width: 2),
+                        onChanged: isLocked ? null : onChanged,
+                      ),
+              ),
             ),
-          ),
-          Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon, size: 36, color: Colors.black),
-                const SizedBox(height: 8),
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black,
+            Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, size: 36, color: Colors.black),
+                  const SizedBox(height: 8),
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black,
+                    ),
+                    textAlign: TextAlign.center,
                   ),
-                  textAlign: TextAlign.center,
-                ),
-              ],
+                  if (isLocked) ...[
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Indisponível para este veículo',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.black54,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1645,7 +1727,15 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
                   scrollController: scrollController,
                   onlineNotifier: _onlineNotifier,
                   onGoOffline: _goOffline,
-                  onShowPreferences: () => _showPreferencesSheet(context),
+                  onShowPreferences: () {
+                    // Forçar valor de teste antes de abrir o modal (debug)
+                    String testeVehicleType = 'moto';
+                    _vehicleType = testeVehicleType;
+                    debugPrint(
+                      'DEBUG VIPER: Forçando testeVehicleType = $testeVehicleType',
+                    );
+                    _showPreferencesSheet(context);
+                  },
                 ),
               ),
             ),
@@ -1873,12 +1963,19 @@ class _UnifiedDriverSheet extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
 
+                    // Espaçador dinâmico: empurra o conteúdo para o "subsolo"
+                    // da gaveta quando ela estiver totalmente expandida.
+                    SizedBox(height: MediaQuery.of(context).size.height * 0.75),
+
                     // ── Conteúdo expandido (visível a partir de ~0.45) ──────────
                     Padding(
-                      padding: EdgeInsets.fromLTRB(20, 28, 20, 24 + bottomPad),
+                      padding: EdgeInsets.fromLTRB(20, 28, 20, 40 + bottomPad),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
+                          // Espaço de segurança antes do botão
+                          const SizedBox(height: 20),
+
                           // FICAR OFFLINE: vermelho+habilitado (online) ou cinza+desabilitado (offline)
                           SizedBox(
                             width: double.infinity,
@@ -1906,28 +2003,6 @@ class _UnifiedDriverSheet extends StatelessWidget {
                                   fontSize: 16,
                                   fontWeight: FontWeight.w800,
                                   letterSpacing: 0.5,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          // Espaço reservado para ganhos do dia / métricas futuras
-                          Container(
-                            height: 80,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF1E1E1E),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: Center(
-                              child: Text(
-                                isOnline
-                                    ? 'Aguardando novas corridas...'
-                                    : 'Você está offline',
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  color: Color(0xFF5A5A5A),
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500,
                                 ),
                               ),
                             ),

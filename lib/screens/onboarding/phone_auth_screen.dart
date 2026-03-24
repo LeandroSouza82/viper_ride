@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'otp_verification_screen.dart';
+import '../../services/auth_service.dart';
 
 class PhoneAuthScreen extends StatefulWidget {
   const PhoneAuthScreen({super.key});
@@ -10,19 +10,11 @@ class PhoneAuthScreen extends StatefulWidget {
 
 class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   final TextEditingController _phoneController = TextEditingController();
-  bool _isButtonEnabled = false;
 
   @override
   void dispose() {
     _phoneController.dispose();
     super.dispose();
-  }
-
-  void _checkInput(String value) {
-    // Habilita o botão apenas se o usuário digitou uma quantidade razoável de números
-    setState(() {
-      _isButtonEnabled = value.length >= 10;
-    });
   }
 
   @override
@@ -99,7 +91,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                         letterSpacing: 2.0,
                         color: Colors.black,
                       ),
-                      onChanged: _checkInput,
+                      onChanged: (v) {},
                       decoration: InputDecoration(
                         hintText: '11 99999-9999',
                         hintStyle: TextStyle(
@@ -124,23 +116,27 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
 
               const Spacer(),
 
-              // Botão Avançar
+              // Botão Avançar (temporariamente chama gerarEEnviarOTP diretamente para testes)
               SizedBox(
                 width: double.infinity,
                 height: 56,
                 child: ElevatedButton(
-                  onPressed: _isButtonEnabled
-                      ? () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => OtpVerificationScreen(
-                                phoneNumber: _phoneController.text,
-                              ),
-                            ),
-                          );
-                        }
-                      : null,
+                  onPressed: () async {
+                    // Captura messenger antes de awaits
+                    final messenger = ScaffoldMessenger.of(context);
+
+                    // Chama diretamente o serviço OTP (versão de teste)
+                    await ViperAuthService.gerarEEnviarOTP(
+                      _phoneController.text,
+                    );
+
+                    // Feedback local simples
+                    messenger.showSnackBar(
+                      const SnackBar(
+                        content: Text('Solicitação de OTP enviada'),
+                      ),
+                    );
+                  },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.black,
                     disabledBackgroundColor: Colors.grey.shade300,
