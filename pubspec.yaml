@@ -50,6 +50,7 @@ dependencies:
   pinput: ^6.0.2
   get: ^4.6.5
   audioplayers: ^6.6.0
+  slide_to_act: ^2.0.2
 
 dev_dependencies:
   flutter_test:

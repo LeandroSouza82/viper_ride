@@ -635,9 +635,6 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
     _positionSub?.cancel();
     _positionSub = null;
     TripRequestService.instance.stopListening();
-    try {
-      AudioService.instance.playOfflineSound();
-    } catch (_) {}
     await _clearDriverPuck();
     await _clearRouteOverview();
     await ViperForegroundService.stop();
@@ -1273,116 +1270,18 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
         backgroundColor: const Color(0xFF2ECC71),
         foregroundColor: Colors.black,
         tooltip: 'Testar alerta de corrida',
-        onPressed: () async {
-          const request = RideRequest(
-            id: '123',
-            fare: 18.50,
-            minutesToPassenger: 8,
-            kmToPassenger: 4.2,
-            minutesToDestination: 8,
-            kmToDestination: 4.2,
-            pickupAddress: 'Passeio Pedra Branca, Palhoça',
-            pickupLat: -27.6225,
-            pickupLng: -48.6811,
-            destinationAddress: 'Shopping ViaCatarina, Palhoça',
-            destLat: -27.6441,
-            destLng: -48.6657,
-            passengerRating: 4.9,
-            paymentMethod: ViperPaymentMethod.card,
-          );
-
-          _rideRequestNotifier.value = request;
-
-          // Respiro obrigatório: deixa o Flutter montar o overlay antes de
-          // pedir cálculo de bounds/render ao Mapbox no PlatformView.
-          await Future.delayed(const Duration(milliseconds: 500));
-          if (!mounted) return;
-
-          var driverPosition = _positionNotifier.value;
-          if (driverPosition == null) {
-            driverPosition = await ViperLocationService.getCurrentPosition();
-            if (!mounted || driverPosition == null) return;
-            _positionNotifier.value = driverPosition;
-            await _updateDriverPuck(driverPosition);
-          }
-
-          final routeData = await _fetchRoute(
-            Position(driverPosition.longitude, driverPosition.latitude),
-            Position(request.pickupLng, request.pickupLat),
-            Position(request.destLng, request.destLat),
-          );
-          final enrichedRequest = RideRequest(
-            id: request.id,
-            fare: request.fare,
-            minutesToPassenger:
-                (routeData['minutesToPassenger'] as int?) ??
-                request.minutesToPassenger,
-            kmToPassenger:
-                (routeData['kmToPassenger'] as double?) ??
-                request.kmToPassenger,
-            minutesToDestination:
-                (routeData['minutesToDestination'] as int?) ??
-                request.minutesToDestination,
-            kmToDestination:
-                (routeData['kmToDestination'] as double?) ??
-                request.kmToDestination,
-            pickupAddress: request.pickupAddress,
-            pickupLat: request.pickupLat,
-            pickupLng: request.pickupLng,
-            destinationAddress: request.destinationAddress,
-            destLat: request.destLat,
-            destLng: request.destLng,
-            passengerRating: request.passengerRating,
-            paymentMethod: request.paymentMethod,
-          );
-
-          _rideRequestNotifier.value = enrichedRequest;
-
-          await _drawRouteOverview(enrichedRequest, driverPosition);
-
-          final mapboxMap = _mapController;
-          if (mapboxMap == null) return;
-
-          final southwest = Point(
-            coordinates: Position(
-              enrichedRequest.pickupLng < enrichedRequest.destLng
-                  ? enrichedRequest.pickupLng
-                  : enrichedRequest.destLng,
-              enrichedRequest.pickupLat < enrichedRequest.destLat
-                  ? enrichedRequest.pickupLat
-                  : enrichedRequest.destLat,
-            ),
-          );
-          final northeast = Point(
-            coordinates: Position(
-              enrichedRequest.pickupLng > enrichedRequest.destLng
-                  ? enrichedRequest.pickupLng
-                  : enrichedRequest.destLng,
-              enrichedRequest.pickupLat > enrichedRequest.destLat
-                  ? enrichedRequest.pickupLat
-                  : enrichedRequest.destLat,
-            ),
-          );
-          final padding = MbxEdgeInsets(
-            top: 100,
-            left: 50,
-            bottom: 450,
-            right: 50,
-          );
-
-          final cameraOptions = await mapboxMap.cameraForCoordinateBounds(
-            CoordinateBounds(
-              southwest: southwest,
-              northeast: northeast,
-              infiniteBounds: false,
-            ),
-            padding,
-            0.0,
-            0.0,
-            null,
-            null,
-          );
-          mapboxMap.setCamera(cameraOptions);
+        onPressed: () {
+          TripRequestService.instance.requestNotifier.value = {
+            'price': 18.50,
+            'eta': '15 min',
+            'distance_to_pickup': '7.3 km',
+            'trip_distance': '4.8 km',
+            'pickup_address': 'Passeio Pedra Branca, Palhoça',
+            'destination_address': 'Shopping ViaCatarina, Palhoça',
+            'rating': 4.9,
+            'payment_method': 'Cartão',
+          };
+          AudioService.instance.playRequestSound();
         },
         child: const Icon(Icons.notifications_active_rounded),
       ),
@@ -1473,6 +1372,7 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(30),
+                            border: Border.all(color: Colors.black, width: 1.5),
                             boxShadow: const [
                               BoxShadow(
                                 color: Colors.black26,
@@ -1487,8 +1387,15 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
                                 : 'R\$ •••••',
                             style: const TextStyle(
                               fontSize: 18,
-                              fontWeight: FontWeight.bold,
+                              fontWeight: FontWeight.w900,
                               color: Colors.black,
+                              shadows: [
+                                Shadow(
+                                  color: Colors.black26,
+                                  offset: Offset(0, 1),
+                                  blurRadius: 1,
+                                ),
+                              ],
                             ),
                           ),
                         ),
@@ -1885,7 +1792,9 @@ class _StartPillButton extends StatelessWidget {
         elevation: 6,
         shadowColor: Colors.black38,
         padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 18),
-        shape: const StadiumBorder(),
+        shape: const StadiumBorder(
+          side: BorderSide(color: Colors.black, width: 2.0),
+        ),
       ),
       onPressed: onTap,
       child: const Text(
@@ -2030,7 +1939,18 @@ class _UnifiedDriverSheet extends StatelessWidget {
                                 ),
                                 shape: const StadiumBorder(),
                               ),
-                              onPressed: isOnline ? onGoOffline : null,
+                              onPressed: isOnline
+                                  ? () async {
+                                      try {
+                                        await AudioService.instance
+                                            .playOfflineSound();
+                                        await Future.delayed(
+                                          const Duration(milliseconds: 1200),
+                                        );
+                                      } catch (_) {}
+                                      onGoOffline();
+                                    }
+                                  : null,
                               child: const Text(
                                 'FICAR OFFLINE',
                                 style: TextStyle(

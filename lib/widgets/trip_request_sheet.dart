@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/trip_request_service.dart';
+import '../services/audio_service.dart';
+import 'package:slide_to_act/slide_to_act.dart';
 
 class TripRequestSheet extends StatelessWidget {
   final Map<String, dynamic> trip;
@@ -18,6 +20,15 @@ class TripRequestSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bool isDayTime = DateTime.now().hour >= 6 && DateTime.now().hour < 18;
+    final Color bgColor = isDayTime ? Colors.white : Colors.grey[900]!;
+    final Color primaryText = isDayTime ? Colors.black87 : Colors.white;
+    final Color secondaryText = isDayTime
+        ? Colors.grey[700]!
+        : Colors.grey.shade300;
+    final Color iconColor = isDayTime ? Colors.grey[700]! : Colors.white;
+    final Color sliderBg = isDayTime ? Colors.grey[200]! : Colors.grey[800]!;
+
     final price = _formatPrice(trip['price'] ?? trip['fare'] ?? trip['valor']);
     final eta = trip['eta'] ?? trip['pickup_eta'] ?? '--';
     final distanceToPickup =
@@ -37,7 +48,7 @@ class TripRequestSheet extends StatelessWidget {
         child: Container(
           width: double.infinity,
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: bgColor,
             borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
             boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10)],
           ),
@@ -53,8 +64,9 @@ class TripRequestSheet extends StatelessWidget {
                   IconButton(
                     onPressed: () {
                       TripRequestService.instance.requestNotifier.value = null;
+                      AudioService.instance.stopSound();
                     },
-                    icon: Icon(Icons.close),
+                    icon: Icon(Icons.close, color: iconColor),
                   ),
                 ],
               ),
@@ -72,25 +84,22 @@ class TripRequestSheet extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 28,
                             fontWeight: FontWeight.bold,
+                            color: primaryText,
                           ),
                         ),
                         SizedBox(height: 6),
                         Row(
                           children: [
-                            Icon(
-                              Icons.timer,
-                              size: 16,
-                              color: Colors.grey[700],
-                            ),
+                            Icon(Icons.timer, size: 16, color: secondaryText),
                             SizedBox(width: 6),
                             Text(
                               '$eta • $distanceToPickup',
-                              style: TextStyle(color: Colors.grey[700]),
+                              style: TextStyle(color: secondaryText),
                             ),
                             SizedBox(width: 8),
                             Text(
                               '• $tripDistance',
-                              style: TextStyle(color: Colors.grey[700]),
+                              style: TextStyle(color: secondaryText),
                             ),
                           ],
                         ),
@@ -112,7 +121,10 @@ class TripRequestSheet extends StatelessWidget {
                           SizedBox(width: 4),
                           Text(
                             rating.toString(),
-                            style: TextStyle(fontWeight: FontWeight.w600),
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: primaryText,
+                            ),
                           ),
                         ],
                       ),
@@ -122,12 +134,12 @@ class TripRequestSheet extends StatelessWidget {
                           Icon(
                             Icons.credit_card,
                             size: 18,
-                            color: Colors.grey[700],
+                            color: secondaryText,
                           ),
                           SizedBox(width: 6),
                           Text(
                             payment.toString(),
-                            style: TextStyle(color: Colors.grey[700]),
+                            style: TextStyle(color: secondaryText),
                           ),
                         ],
                       ),
@@ -144,9 +156,21 @@ class TripRequestSheet extends StatelessWidget {
                 children: [
                   Column(
                     children: [
-                      Icon(Icons.circle, color: Colors.green, size: 12),
-                      Container(width: 1, height: 36, color: Colors.grey[300]),
-                      Icon(Icons.location_on, color: Colors.red, size: 20),
+                      Icon(
+                        Icons.circle,
+                        color: isDayTime ? Colors.green : Colors.white,
+                        size: 12,
+                      ),
+                      Container(
+                        width: 1,
+                        height: 36,
+                        color: isDayTime ? Colors.grey[300] : Colors.grey[700],
+                      ),
+                      Icon(
+                        Icons.location_on,
+                        color: isDayTime ? Colors.red : Colors.white,
+                        size: 20,
+                      ),
                     ],
                   ),
                   SizedBox(width: 12),
@@ -156,10 +180,13 @@ class TripRequestSheet extends StatelessWidget {
                       children: [
                         Text(
                           'Coleta',
-                          style: TextStyle(fontWeight: FontWeight.w600),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: primaryText,
+                          ),
                         ),
                         SizedBox(height: 4),
-                        Text(pickup, style: TextStyle(color: Colors.black87)),
+                        Text(pickup, style: TextStyle(color: primaryText)),
                       ],
                     ),
                   ),
@@ -178,13 +205,13 @@ class TripRequestSheet extends StatelessWidget {
                       children: [
                         Text(
                           'Destino',
-                          style: TextStyle(fontWeight: FontWeight.w600),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: primaryText,
+                          ),
                         ),
                         SizedBox(height: 4),
-                        Text(
-                          destination,
-                          style: TextStyle(color: Colors.black87),
-                        ),
+                        Text(destination, style: TextStyle(color: primaryText)),
                       ],
                     ),
                   ),
@@ -193,52 +220,29 @@ class TripRequestSheet extends StatelessWidget {
 
               SizedBox(height: 16),
 
-              // Slider placeholder (visual) — full width
-              GestureDetector(
-                onHorizontalDragEnd: (_) {
-                  // TODO: Implementar aceite
-                },
-                child: Container(
-                  height: 56,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[200],
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  padding: EdgeInsets.symmetric(horizontal: 12),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 48,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(6),
-                          boxShadow: [
-                            BoxShadow(color: Colors.black12, blurRadius: 4),
-                          ],
-                        ),
-                        alignment: Alignment.center,
-                        child: Icon(Icons.chevron_right, color: Colors.green),
-                      ),
-                      SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          'Deslize para aceitar',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                    ],
-                  ),
+              // Real slider — usa slide_to_act
+              SlideAction(
+                text: 'Deslize para aceitar',
+                textStyle: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: primaryText,
                 ),
+                innerColor: Colors.green,
+                outerColor: sliderBg,
+                elevation: 0,
+                onSubmit: () async {
+                  TripRequestService.instance.requestNotifier.value = null;
+                  try {
+                    await AudioService.instance.stopSound();
+                  } catch (_) {}
+                },
               ),
 
               SizedBox(height: 8),
-              // Small hint text
               Center(
                 child: Text(
                   'Arraste para a direita para aceitar a corrida',
-                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  style: TextStyle(fontSize: 12, color: secondaryText),
                 ),
               ),
             ],
