@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:get/get.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:viper_ride/screens/driver/driver_home.dart';
 import '../../core/viper_theme.dart';
 
 /// Tela de boas-vindas e ponto de decisão de fluxo do Viper Ride.
@@ -32,7 +35,9 @@ class _ViperSplashScreenState extends State<ViperSplashScreen>
   late final Animation<double> _syncFade;
 
   // Verificado de forma síncrona: condiciona texto e rota de destino
-  late final bool _hasSession;
+  late bool _hasSession;
+  bool _hasLocalAuth = false;
+  bool _navigated = false;
 
   @override
   void initState() {
@@ -40,6 +45,17 @@ class _ViperSplashScreenState extends State<ViperSplashScreen>
 
     // Leitura síncrona: não bloqueia, pois currentSession é cache local
     _hasSession = Supabase.instance.client.auth.currentSession != null;
+
+    // Verifica flag local (auto-login) assincronamente
+    SharedPreferences.getInstance()
+        .then((prefs) {
+          if (!mounted) return;
+          final v = prefs.getBool('viper_authorized') ?? false;
+          setState(() => _hasLocalAuth = v);
+        })
+        .catchError((e) {
+          debugPrint('[Viper] Falha ao ler SharedPreferences: $e');
+        });
 
     _controller = AnimationController(
       vsync: this,
@@ -74,15 +90,60 @@ class _ViperSplashScreenState extends State<ViperSplashScreen>
 
     // 2 segundos: tempo para o logo animar e o Supabase confirmar sessão
     Future.delayed(const Duration(seconds: 2), _navigate);
+
+    // Fallback de segurança: se nada aconteceu em 3s, força /login
+    Future.delayed(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      if (_navigated) return;
+      debugPrint('[Viper] Splash fallback: Supabase lento, indo para /login');
+      try {
+        _navigated = true;
+        Get.offAllNamed('/login');
+      } catch (e) {
+        debugPrint('[Viper] Falha no fallback da Splash: $e');
+      }
+    });
   }
 
   void _navigate() {
     if (!mounted) return;
-    // Sem sessão → vai direto para Login (portal mostra LoginScreen)
-    // Com sessão → portal verifica user_type e roteia para Home/Seleção
-    // Em ambos os casos o destino é o portal, mas a rota sinaliza a intenção
-    final route = _hasSession ? '/auth_portal' : '/login';
-    Navigator.of(context).pushNamedAndRemoveUntil(route, (r) => false);
+    if (_navigated) return;
+    // Se há sessão Supabase ativa, buscar user_type e ir direto para DriverHome.
+    if (_hasSession) {
+      debugPrint(
+        '[Viper] Sessão ativa encontrada — indo direto para DriverHome',
+      );
+      try {
+        _navigated = true;
+        Get.offAll(() => const ViperDriverHome());
+      } catch (e) {
+        debugPrint('[Viper] Falha ao navegar para ViperDriverHome: $e');
+      }
+      return;
+    }
+
+    // Se o dispositivo foi marcado localmente como autorizado, também vamos direto
+    if (_hasLocalAuth) {
+      debugPrint(
+        '[Viper] Authorization local detectada — indo direto para DriverHome',
+      );
+      try {
+        _navigated = true;
+        Get.offAll(() => const ViperDriverHome());
+      } catch (e) {
+        debugPrint('[Viper] Falha ao navegar para ViperDriverHome (local): $e');
+      }
+      return;
+    }
+
+    // Sem sessão/local auth → seguir para seleção de role (ou login)
+    debugPrint('[Viper] Sem sessão — indo para /role_selection');
+    try {
+      _navigated = true;
+      Get.offAllNamed('/role_selection');
+    } catch (e) {
+      debugPrint('[Viper] Falha ao navegar para /role_selection: $e');
+    }
   }
 
   @override

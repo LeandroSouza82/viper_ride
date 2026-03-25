@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../core/viper_theme.dart';
 import '../../services/auth_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../onboarding/phone_auth_screen.dart';
 
 class ViperUserTypeSelectionScreen extends StatefulWidget {
   const ViperUserTypeSelectionScreen({super.key, required this.onTypeSelected});
@@ -19,6 +21,17 @@ class _ViperUserTypeSelectionScreenState
 
   Future<void> _select(String userType) async {
     if (_loading) return;
+    // Se não há sessão, salvamos a intenção localmente e mandamos para o
+    // fluxo de login por telefone. Após o login a intenção será aplicada.
+    final current = Supabase.instance.client.auth.currentUser;
+    if (current == null) {
+      ViperAuthService.pendingUserType = userType;
+      Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const PhoneAuthScreen()));
+      return;
+    }
+
     setState(() => _loading = true);
 
     final error = await ViperAuthService.setUserType(userType);

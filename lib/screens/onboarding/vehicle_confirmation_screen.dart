@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'under_review_screen.dart';
 import '../../services/supabase_service.dart';
+import '../../services/auth_service.dart';
+import 'otp_verification_screen.dart';
 
 class VehicleConfirmationScreen extends StatefulWidget {
   final String placaInicial;
@@ -572,7 +573,8 @@ class _VehicleConfirmationScreenState extends State<VehicleConfirmationScreen> {
                         'vehicle_color': _corSelecionada,
                       };
 
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      final messenger = ScaffoldMessenger.of(context);
+                      messenger.showSnackBar(
                         const SnackBar(
                           content: Text('Enviando para a Viper...'),
                         ),
@@ -586,16 +588,37 @@ class _VehicleConfirmationScreenState extends State<VehicleConfirmationScreen> {
                       if (!context.mounted) return;
 
                       if (erro == null) {
-                        // SUCESSO! Vai para a tela de espera
+                        // SUCESSO: finaliza o cadastro, gera OTP e envia (simulado)
+                        final userId = SupabaseService.getCurrentUserId();
+                        String? phone;
+                        if (userId != null) {
+                          phone = await SupabaseService.getProfilePhone(userId);
+                        }
+
+                        await ViperAuthService.gerarEEnviarOTP(phone ?? '');
+                        if (context.mounted) {
+                          messenger.showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Solicitação de OTP enviada (verifique WhatsApp)',
+                              ),
+                            ),
+                          );
+                        }
+
+                        if (!context.mounted) return;
+
+                        // Navega para verificação OTP
                         Navigator.pushReplacement(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => const UnderReviewScreen(),
+                            builder: (context) =>
+                                OtpVerificationScreen(phoneNumber: phone ?? ''),
                           ),
                         );
                       } else {
                         // FALHA! Mostra o erro vermelho na tela
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        messenger.showSnackBar(
                           SnackBar(
                             content: Text('Erro ao salvar: $erro'),
                             backgroundColor: Colors.red,

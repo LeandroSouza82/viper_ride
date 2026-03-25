@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:geolocator/geolocator.dart' as geo;
@@ -15,8 +16,14 @@ import '../../core/viper_theme.dart';
 import '../../services/auth_service.dart';
 import '../../services/location_service.dart';
 import '../../services/viper_foreground_service.dart';
+import '../../services/trip_request_service.dart';
+import '../../services/audio_service.dart';
+import '../../controllers/mapbox_theme_controller.dart';
 import 'widgets/ride_request_alert.dart';
+import '../../widgets/trip_request_sheet.dart';
 import 'driver_settings.dart';
+import 'profile/complete_profile_screen.dart';
+import '../../controllers/account_controller.dart';
 
 /// Tela principal do motorista.
 ///
@@ -80,6 +87,7 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
   final List<String> _veiculosCadastrados = ['moto', 'carro'];
   final PageController _pageController = PageController();
   int _currentPage = 0;
+  String? _vehicleType;
 
   StreamSubscription<geo.Position>? _positionSub;
   MapboxMap? _mapController;
@@ -110,7 +118,56 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
         if (!mounted) return;
         _canShowMapNotifier.value = true;
       });
+      // Carrega o tipo do veículo do perfil para bloquear preferências
+      _loadVehicleType();
+      // Verifica se o perfil está completo e, se não, redireciona para completar
+      // Checagem separada para evitar import circular — usamos Get.find if exists
+      Future.microtask(() async {
+        try {
+          late AccountController ac;
+          try {
+            ac = Get.find<AccountController>();
+          } catch (_) {
+            ac = Get.put(AccountController());
+          }
+          final incomplete = await ac.checkProfileCompleteness();
+          if (!mounted) return;
+          if (incomplete) {
+            try {
+              Get.offAll(() => const CompleteProfileScreen());
+            } catch (_) {}
+          }
+        } catch (_) {}
+      });
     });
+  }
+
+  Future<void> _loadVehicleType() async {
+    try {
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId == null) return;
+      final res = await Supabase.instance.client
+          .from('profiles')
+          .select('vehicle_type')
+          .eq('id', userId)
+          .maybeSingle();
+      if (res == null) return;
+      final v = (res as Map<String, dynamic>?)?['vehicle_type'] as String?;
+      if (v != null && mounted) {
+        setState(() {
+          _vehicleType = v.toLowerCase();
+        });
+        debugPrint(
+          'DEBUG VIPER: Tipo de veículo carregado do banco: $_vehicleType',
+        );
+      }
+      // também imprime caso venha nulo
+      if (v == null) {
+        debugPrint('DEBUG VIPER: Tipo de veículo carregado do banco: null');
+      }
+    } catch (_) {
+      // ignore errors silently — não bloqueia UI
+    }
   }
 
   Future<void> _initLocationPermission() async {
@@ -577,6 +634,7 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
   Future<void> _disposeDriverMode() async {
     _positionSub?.cancel();
     _positionSub = null;
+    TripRequestService.instance.stopListening();
     await _clearDriverPuck();
     await _clearRouteOverview();
     await ViperForegroundService.stop();
@@ -673,6 +731,10 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
       supabaseKey: dotenv.env['SUPABASE_ANON_KEY'] ?? '',
       driverId: userId,
     );
+    TripRequestService.instance.startListening(driverId: userId);
+    try {
+      AudioService.instance.playOnlineSound();
+    } catch (_) {}
 
     _positionSub = ViperLocationService.positionStream().listen(
       (pos) async {
@@ -909,6 +971,7 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
                                 title: 'Viper Moto',
                                 icon: Icons.motorcycle,
                                 isActive: isMotoActive,
+                                isLocked: _vehicleType == 'carro',
                                 onChanged: (val) => setModalState(() {
                                   isMotoActive = val ?? false;
                                   if (isMotoActive) isCarroActive = false;
@@ -921,6 +984,8 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
                                 title: 'Viper Carros',
                                 icon: Icons.directions_car,
                                 isActive: isCarroActive,
+                                // Forçar bloqueio visual para teste
+                                isLocked: true,
                                 onChanged: (val) => setModalState(() {
                                   isCarroActive = val ?? false;
                                   if (isCarroActive) isMotoActive = false;
@@ -1073,46 +1138,72 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
     required String title,
     required IconData icon,
     required bool isActive,
+    bool isLocked = false,
     required ValueChanged<bool?> onChanged,
   }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: Colors.black, width: 2),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Stack(
-        children: [
-          Align(
-            alignment: Alignment.topRight,
-            child: Checkbox(
-              value: isActive,
-              activeColor: Colors.black,
-              checkColor: Colors.white,
-              side: const BorderSide(color: Colors.black, width: 2),
-              onChanged: onChanged,
+    return Opacity(
+      opacity: isLocked ? 0.3 : 1.0,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: Colors.black, width: 2),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Stack(
+          children: [
+            // Top-right: checkbox when allowed, lock icon when blocked
+            Align(
+              alignment: Alignment.topRight,
+              child: Padding(
+                padding: const EdgeInsets.all(6.0),
+                child: isLocked
+                    ? const Icon(
+                        Icons.lock_outline,
+                        size: 20,
+                        color: Colors.black54,
+                      )
+                    : Checkbox(
+                        value: isActive,
+                        activeColor: Colors.black,
+                        checkColor: Colors.white,
+                        side: const BorderSide(color: Colors.black, width: 2),
+                        onChanged: isLocked ? null : onChanged,
+                      ),
+              ),
             ),
-          ),
-          Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon, size: 36, color: Colors.black),
-                const SizedBox(height: 8),
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black,
+            Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, size: 36, color: Colors.black),
+                  const SizedBox(height: 8),
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black,
+                    ),
+                    textAlign: TextAlign.center,
                   ),
-                  textAlign: TextAlign.center,
-                ),
-              ],
+                  if (isLocked) ...[
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Indisponível para este veículo',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.black54,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1179,116 +1270,18 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
         backgroundColor: const Color(0xFF2ECC71),
         foregroundColor: Colors.black,
         tooltip: 'Testar alerta de corrida',
-        onPressed: () async {
-          const request = RideRequest(
-            id: '123',
-            fare: 18.50,
-            minutesToPassenger: 8,
-            kmToPassenger: 4.2,
-            minutesToDestination: 8,
-            kmToDestination: 4.2,
-            pickupAddress: 'Passeio Pedra Branca, Palhoça',
-            pickupLat: -27.6225,
-            pickupLng: -48.6811,
-            destinationAddress: 'Shopping ViaCatarina, Palhoça',
-            destLat: -27.6441,
-            destLng: -48.6657,
-            passengerRating: 4.9,
-            paymentMethod: ViperPaymentMethod.card,
-          );
-
-          _rideRequestNotifier.value = request;
-
-          // Respiro obrigatório: deixa o Flutter montar o overlay antes de
-          // pedir cálculo de bounds/render ao Mapbox no PlatformView.
-          await Future.delayed(const Duration(milliseconds: 500));
-          if (!mounted) return;
-
-          var driverPosition = _positionNotifier.value;
-          if (driverPosition == null) {
-            driverPosition = await ViperLocationService.getCurrentPosition();
-            if (!mounted || driverPosition == null) return;
-            _positionNotifier.value = driverPosition;
-            await _updateDriverPuck(driverPosition);
-          }
-
-          final routeData = await _fetchRoute(
-            Position(driverPosition.longitude, driverPosition.latitude),
-            Position(request.pickupLng, request.pickupLat),
-            Position(request.destLng, request.destLat),
-          );
-          final enrichedRequest = RideRequest(
-            id: request.id,
-            fare: request.fare,
-            minutesToPassenger:
-                (routeData['minutesToPassenger'] as int?) ??
-                request.minutesToPassenger,
-            kmToPassenger:
-                (routeData['kmToPassenger'] as double?) ??
-                request.kmToPassenger,
-            minutesToDestination:
-                (routeData['minutesToDestination'] as int?) ??
-                request.minutesToDestination,
-            kmToDestination:
-                (routeData['kmToDestination'] as double?) ??
-                request.kmToDestination,
-            pickupAddress: request.pickupAddress,
-            pickupLat: request.pickupLat,
-            pickupLng: request.pickupLng,
-            destinationAddress: request.destinationAddress,
-            destLat: request.destLat,
-            destLng: request.destLng,
-            passengerRating: request.passengerRating,
-            paymentMethod: request.paymentMethod,
-          );
-
-          _rideRequestNotifier.value = enrichedRequest;
-
-          await _drawRouteOverview(enrichedRequest, driverPosition);
-
-          final mapboxMap = _mapController;
-          if (mapboxMap == null) return;
-
-          final southwest = Point(
-            coordinates: Position(
-              enrichedRequest.pickupLng < enrichedRequest.destLng
-                  ? enrichedRequest.pickupLng
-                  : enrichedRequest.destLng,
-              enrichedRequest.pickupLat < enrichedRequest.destLat
-                  ? enrichedRequest.pickupLat
-                  : enrichedRequest.destLat,
-            ),
-          );
-          final northeast = Point(
-            coordinates: Position(
-              enrichedRequest.pickupLng > enrichedRequest.destLng
-                  ? enrichedRequest.pickupLng
-                  : enrichedRequest.destLng,
-              enrichedRequest.pickupLat > enrichedRequest.destLat
-                  ? enrichedRequest.pickupLat
-                  : enrichedRequest.destLat,
-            ),
-          );
-          final padding = MbxEdgeInsets(
-            top: 100,
-            left: 50,
-            bottom: 450,
-            right: 50,
-          );
-
-          final cameraOptions = await mapboxMap.cameraForCoordinateBounds(
-            CoordinateBounds(
-              southwest: southwest,
-              northeast: northeast,
-              infiniteBounds: false,
-            ),
-            padding,
-            0.0,
-            0.0,
-            null,
-            null,
-          );
-          mapboxMap.setCamera(cameraOptions);
+        onPressed: () {
+          TripRequestService.instance.requestNotifier.value = {
+            'price': 18.50,
+            'eta': '15 min',
+            'distance_to_pickup': '7.3 km',
+            'trip_distance': '4.8 km',
+            'pickup_address': 'Passeio Pedra Branca, Palhoça',
+            'destination_address': 'Shopping ViaCatarina, Palhoça',
+            'rating': 4.9,
+            'payment_method': 'Cartão',
+          };
+          AudioService.instance.playRequestSound();
         },
         child: const Icon(Icons.notifications_active_rounded),
       ),
@@ -1314,7 +1307,7 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
                 // repintura (lockHardwareCanvas / QueueBuffer timeout) causado
                 // por overlays de Stack sobre o PlatformView.
                 textureView: true,
-                styleUri: 'mapbox://styles/mapbox/dark-v11',
+                styleUri: MapboxThemeController.styleFromTime(),
                 cameraOptions: CameraOptions(
                   center: Point(coordinates: Position(-46.6333, -23.5505)),
                   zoom: 15.0,
@@ -1379,6 +1372,7 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(30),
+                            border: Border.all(color: Colors.black, width: 1.5),
                             boxShadow: const [
                               BoxShadow(
                                 color: Colors.black26,
@@ -1393,8 +1387,15 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
                                 : 'R\$ •••••',
                             style: const TextStyle(
                               fontSize: 18,
-                              fontWeight: FontWeight.bold,
+                              fontWeight: FontWeight.w900,
                               color: Colors.black,
+                              shadows: [
+                                Shadow(
+                                  color: Colors.black26,
+                                  offset: Offset(0, 1),
+                                  blurRadius: 1,
+                                ),
+                              ],
                             ),
                           ),
                         ),
@@ -1645,7 +1646,15 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
                   scrollController: scrollController,
                   onlineNotifier: _onlineNotifier,
                   onGoOffline: _goOffline,
-                  onShowPreferences: () => _showPreferencesSheet(context),
+                  onShowPreferences: () {
+                    // Forçar valor de teste antes de abrir o modal (debug)
+                    String testeVehicleType = 'moto';
+                    _vehicleType = testeVehicleType;
+                    debugPrint(
+                      'DEBUG VIPER: Forçando testeVehicleType = $testeVehicleType',
+                    );
+                    _showPreferencesSheet(context);
+                  },
                 ),
               ),
             ),
@@ -1664,21 +1673,29 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
               return ValueListenableBuilder<bool>(
                 valueListenable: _onlineNotifier,
                 builder: (context, isOnline, _) {
-                  if (isOnline) return const SizedBox.shrink();
-                  return Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: currentBottom,
-                    child: IgnorePointer(
-                      ignoring: opacity == 0.0,
-                      child: AnimatedOpacity(
-                        opacity: opacity,
-                        duration: const Duration(milliseconds: 200),
-                        child: Center(
-                          child: _StartPillButton(onTap: _goOnline),
+                  // Se existe uma requisição de corrida ativa, escondemos o botão COMEÇAR
+                  return ValueListenableBuilder<Map<String, dynamic>?>(
+                    valueListenable:
+                        TripRequestService.instance.requestNotifier,
+                    builder: (context, trip, child) {
+                      if (trip != null) return const SizedBox.shrink();
+                      if (isOnline) return const SizedBox.shrink();
+                      return Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: currentBottom,
+                        child: IgnorePointer(
+                          ignoring: opacity == 0.0,
+                          child: AnimatedOpacity(
+                            opacity: opacity,
+                            duration: const Duration(milliseconds: 200),
+                            child: Center(
+                              child: _StartPillButton(onTap: _goOnline),
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
+                      );
+                    },
                   );
                 },
               );
@@ -1712,6 +1729,20 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
                     ),
                   ),
                 ),
+              );
+            },
+          ),
+
+          // TripRequestSheet: exibe a BottomSheet fixa quando há uma requisição
+          ValueListenableBuilder<Map<String, dynamic>?>(
+            valueListenable: TripRequestService.instance.requestNotifier,
+            builder: (context, trip, _) {
+              if (trip == null) return const SizedBox.shrink();
+              return Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: TripRequestSheet(trip: trip),
               );
             },
           ),
@@ -1761,7 +1792,9 @@ class _StartPillButton extends StatelessWidget {
         elevation: 6,
         shadowColor: Colors.black38,
         padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 18),
-        shape: const StadiumBorder(),
+        shape: const StadiumBorder(
+          side: BorderSide(color: Colors.black, width: 2.0),
+        ),
       ),
       onPressed: onTap,
       child: const Text(
@@ -1873,12 +1906,19 @@ class _UnifiedDriverSheet extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
 
+                    // Espaçador dinâmico: empurra o conteúdo para o "subsolo"
+                    // da gaveta quando ela estiver totalmente expandida.
+                    SizedBox(height: MediaQuery.of(context).size.height * 0.75),
+
                     // ── Conteúdo expandido (visível a partir de ~0.45) ──────────
                     Padding(
-                      padding: EdgeInsets.fromLTRB(20, 28, 20, 24 + bottomPad),
+                      padding: EdgeInsets.fromLTRB(20, 28, 20, 40 + bottomPad),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
+                          // Espaço de segurança antes do botão
+                          const SizedBox(height: 20),
+
                           // FICAR OFFLINE: vermelho+habilitado (online) ou cinza+desabilitado (offline)
                           SizedBox(
                             width: double.infinity,
@@ -1899,35 +1939,24 @@ class _UnifiedDriverSheet extends StatelessWidget {
                                 ),
                                 shape: const StadiumBorder(),
                               ),
-                              onPressed: isOnline ? onGoOffline : null,
+                              onPressed: isOnline
+                                  ? () async {
+                                      try {
+                                        await AudioService.instance
+                                            .playOfflineSound();
+                                        await Future.delayed(
+                                          const Duration(milliseconds: 1200),
+                                        );
+                                      } catch (_) {}
+                                      onGoOffline();
+                                    }
+                                  : null,
                               child: const Text(
                                 'FICAR OFFLINE',
                                 style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w800,
                                   letterSpacing: 0.5,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          // Espaço reservado para ganhos do dia / métricas futuras
-                          Container(
-                            height: 80,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF1E1E1E),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: Center(
-                              child: Text(
-                                isOnline
-                                    ? 'Aguardando novas corridas...'
-                                    : 'Você está offline',
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  color: Color(0xFF5A5A5A),
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500,
                                 ),
                               ),
                             ),

@@ -3,6 +3,7 @@ import 'package:geolocator/geolocator.dart' as geo;
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import '../core/viper_theme.dart';
 import '../services/geo_service.dart';
+import '../controllers/mapbox_theme_controller.dart';
 
 class ViperMapDisplay extends StatefulWidget {
   const ViperMapDisplay({super.key});
@@ -60,7 +61,7 @@ class _ViperMapDisplayState extends State<ViperMapDisplay> {
         children: [
           // Camada base: mapa Mapbox (rotas e polylines renderizadas pelo SDK)
           MapWidget(
-            styleUri: MapboxStyles.DARK,
+            styleUri: MapboxThemeController.styleFromTime(),
             cameraOptions: CameraOptions(
               center: Point(coordinates: Position(_defaultLng, _defaultLat)),
               zoom: 13.0,

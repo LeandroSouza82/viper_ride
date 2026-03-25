@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
-import 'navigation_settings.dart';
+import 'package:get/get.dart';
+import '../driver/navigation_settings.dart';
+import '../../widgets/v_settings_tile.dart';
+import 'profile/account_management_screen.dart';
 
 class DriverSettingsScreen extends StatelessWidget {
   const DriverSettingsScreen({super.key});
@@ -40,9 +43,17 @@ class DriverSettingsScreen extends StatelessWidget {
               ),
             ),
           ),
-          _buildMenuItem(Icons.person, 'Gerenciar conta da Viper'),
-          _buildMenuItem(Icons.lock, 'Privacidade'),
-          _buildMenuItem(Icons.edit, 'Edite o endereço'),
+          VSettingsTile(
+            icon: Icons.person_outline,
+            title: 'Gerenciar conta da Viper',
+            onTap: () => Get.to(() => const AccountManagementScreen()),
+          ),
+          VSettingsTile(icon: Icons.lock, title: 'Privacidade', onTap: () {}),
+          VSettingsTile(
+            icon: Icons.edit,
+            title: 'Edite o endereço',
+            onTap: () {},
+          ),
 
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 10),
@@ -61,11 +72,15 @@ class DriverSettingsScreen extends StatelessWidget {
               ),
             ),
           ),
-          _buildMenuItem(Icons.accessibility_new, 'Acessibilidade'),
-          _buildMenuItem(Icons.forum, 'Comunicação'),
-          _buildMenuItem(
-            Icons.navigation,
-            'Navegação',
+          VSettingsTile(
+            icon: Icons.accessibility_new,
+            title: 'Acessibilidade',
+            onTap: () {},
+          ),
+          VSettingsTile(icon: Icons.forum, title: 'Comunicação', onTap: () {}),
+          VSettingsTile(
+            icon: Icons.navigation,
+            title: 'Navegação',
             onTap: () {
               Navigator.push(
                 context,
@@ -75,43 +90,21 @@ class DriverSettingsScreen extends StatelessWidget {
               );
             },
           ),
-          _buildMenuItem(Icons.volume_up, 'Sons e voz'),
-          _buildMenuItem(
-            Icons.language,
-            'Idioma do app',
+          VSettingsTile(
+            icon: Icons.volume_up,
+            title: 'Sons e voz',
+            onTap: () {},
+          ),
+          VSettingsTile(
+            icon: Icons.language,
+            title: 'Idioma do app',
             subtitle: 'português (Brasil)',
+            onTap: () {},
           ),
         ],
       ),
     );
   }
 
-  Widget _buildMenuItem(
-    IconData icon,
-    String title, {
-    String? subtitle,
-    VoidCallback? onTap,
-  }) {
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-      leading: Icon(icon, color: Colors.black, size: 28),
-      title: Text(
-        title,
-        style: const TextStyle(
-          fontSize: 16,
-          color: Colors.black,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
-      subtitle: subtitle != null
-          ? Text(subtitle, style: const TextStyle(color: Colors.black54))
-          : null,
-      trailing: const Icon(
-        Icons.chevron_right,
-        color: Colors.black38,
-        size: 28,
-      ),
-      onTap: onTap,
-    );
-  }
+  // Menu items moved to modular widget VSettingsTile
 }

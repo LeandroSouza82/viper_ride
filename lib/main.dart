@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/viper_theme.dart';
 import 'screens/auth/auth_portal.dart';
-import 'screens/onboarding/phone_auth_screen.dart';
 import 'screens/splash/splash_screen.dart';
+import 'screens/auth/selection_screen.dart';
 import 'services/map_engine.dart';
 import 'services/viper_foreground_service.dart';
+import 'screens/onboarding/otp_verification_screen.dart';
+import 'package:viper_ride/screens/driver/driver_home.dart';
+import 'screens/account/manage_account.dart';
 
 /// Ponto de entrada do Viper Ride.
 ///
@@ -84,7 +88,7 @@ class ViperApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return GetMaterialApp(
       title: 'Viper Ride',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
@@ -94,14 +98,25 @@ class ViperApp extends StatelessWidget {
           onSurface: ViperColors.white,
         ),
       ),
-      home: const PhoneAuthScreen(),
-      routes: {
-        '/splash': (_) => const ViperSplashScreen(),
-        // '/login' → ViperAuthPortal sem sessão mostra LoginScreen diretamente.
-        // Rota nomeada separada para clareza do fluxo: Splash → /login → /auth_portal
-        '/login': (_) => const ViperAuthPortal(),
-        '/auth_portal': (_) => const ViperAuthPortal(),
-      },
+      initialRoute: '/splash',
+      // Rotas gerenciadas pelo GetX (unificadas em `getPages`)
+      getPages: [
+        GetPage(name: '/splash', page: () => const ViperSplashScreen()),
+        GetPage(name: '/login', page: () => const ViperAuthPortal()),
+        GetPage(name: '/auth_portal', page: () => const ViperAuthPortal()),
+        GetPage(
+          name: '/role_selection',
+          page: () => ViperUserTypeSelectionScreen(onTypeSelected: () {}),
+        ),
+        GetPage(name: '/home', page: () => const ViperDriverHome()),
+        GetPage(name: '/account', page: () => const ManageAccountScreen()),
+        GetPage(
+          name: '/otp-verification',
+          page: () => OtpVerificationScreen(
+            phoneNumber: Get.arguments is String ? Get.arguments as String : '',
+          ),
+        ),
+      ],
     );
   }
 }

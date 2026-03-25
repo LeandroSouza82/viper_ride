@@ -91,4 +91,20 @@ class SupabaseService {
       return null;
     }
   }
+
+  static Future<String?> getProfilePhone(String userId) async {
+    try {
+      final data = await _supabase
+          .from('profiles')
+          .select('phone')
+          .eq('id', userId)
+          .maybeSingle();
+      if (data == null) return null;
+      final phone = (data as Map)['phone'] as String?;
+      return phone;
+    } catch (e) {
+      debugPrint('Erro ao buscar telefone do perfil: $e');
+      return null;
+    }
+  }
 }
