@@ -17,6 +17,8 @@ import '../../services/auth_service.dart';
 import '../../services/location_service.dart';
 import '../../services/viper_foreground_service.dart';
 import '../../services/trip_request_service.dart';
+import '../../services/audio_service.dart';
+import '../../controllers/mapbox_theme_controller.dart';
 import 'widgets/ride_request_alert.dart';
 import '../../widgets/trip_request_sheet.dart';
 import 'driver_settings.dart';
@@ -633,6 +635,9 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
     _positionSub?.cancel();
     _positionSub = null;
     TripRequestService.instance.stopListening();
+    try {
+      AudioService.instance.playOfflineSound();
+    } catch (_) {}
     await _clearDriverPuck();
     await _clearRouteOverview();
     await ViperForegroundService.stop();
@@ -730,6 +735,9 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
       driverId: userId,
     );
     TripRequestService.instance.startListening(driverId: userId);
+    try {
+      AudioService.instance.playOnlineSound();
+    } catch (_) {}
 
     _positionSub = ViperLocationService.positionStream().listen(
       (pos) async {
@@ -1400,7 +1408,7 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
                 // repintura (lockHardwareCanvas / QueueBuffer timeout) causado
                 // por overlays de Stack sobre o PlatformView.
                 textureView: true,
-                styleUri: 'mapbox://styles/mapbox/dark-v11',
+                styleUri: MapboxThemeController.styleFromTime(),
                 cameraOptions: CameraOptions(
                   center: Point(coordinates: Position(-46.6333, -23.5505)),
                   zoom: 15.0,
@@ -1760,7 +1768,8 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
                 builder: (context, isOnline, _) {
                   // Se existe uma requisição de corrida ativa, escondemos o botão COMEÇAR
                   return ValueListenableBuilder<Map<String, dynamic>?>(
-                    valueListenable: TripRequestService.instance.requestNotifier,
+                    valueListenable:
+                        TripRequestService.instance.requestNotifier,
                     builder: (context, trip, child) {
                       if (trip != null) return const SizedBox.shrink();
                       if (isOnline) return const SizedBox.shrink();

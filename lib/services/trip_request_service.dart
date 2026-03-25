@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'audio_service.dart';
 
 class TripRequestService {
   TripRequestService._();
@@ -38,6 +39,10 @@ class TripRequestService {
                       (item['status'] as String?)?.toLowerCase() ?? '';
                   if (status == 'pending' || status == 'aguardando') {
                     requestNotifier.value = Map<String, dynamic>.from(item);
+                    // Toca som de nova requisição
+                    try {
+                      AudioService.instance.playRequestSound();
+                    } catch (_) {}
                     return;
                   }
                 }
@@ -47,6 +52,9 @@ class TripRequestService {
                   (payload['status'] as String?)?.toLowerCase() ?? '';
               if (status == 'pending' || status == 'aguardando') {
                 requestNotifier.value = Map<String, dynamic>.from(payload);
+                try {
+                  AudioService.instance.playRequestSound();
+                } catch (_) {}
               }
             }
           } catch (_) {}
@@ -60,6 +68,9 @@ class TripRequestService {
       _internalSub = null;
     } catch (_) {}
     requestNotifier.value = null;
+    try {
+      AudioService.instance.stopSound();
+    } catch (_) {}
   }
 
   /// Remove recursos definitivamente.
