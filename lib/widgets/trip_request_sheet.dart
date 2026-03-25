@@ -21,13 +21,14 @@ class TripRequestSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool isDayTime = DateTime.now().hour >= 6 && DateTime.now().hour < 18;
-    final Color bgColor = isDayTime ? Colors.white : Colors.grey[900]!;
-    final Color primaryText = isDayTime ? Colors.black87 : Colors.white;
+    // Tema dinâmico: fundo escuro durante o dia, claro à noite (conforme solicitado)
+    final Color bgColor = isDayTime ? Colors.grey[900]! : Colors.white;
+    final Color primaryText = isDayTime ? Colors.white : Colors.black87;
     final Color secondaryText = isDayTime
-        ? Colors.grey[700]!
-        : Colors.grey.shade300;
-    final Color iconColor = isDayTime ? Colors.grey[700]! : Colors.white;
-    final Color sliderBg = isDayTime ? Colors.grey[200]! : Colors.grey[800]!;
+        ? Colors.grey.shade300
+        : Colors.grey[700]!;
+    final Color iconColor = isDayTime ? Colors.white : Colors.grey[700]!;
+    final Color sliderBg = isDayTime ? Colors.grey[800]! : Colors.grey[200]!;
 
     final price = _formatPrice(trip['price'] ?? trip['fare'] ?? trip['valor']);
     final eta = trip['eta'] ?? trip['pickup_eta'] ?? '--';
@@ -57,6 +58,28 @@ class TripRequestSheet extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Barra de tempo (12s) — Tween animando de 1.0 -> 0.0
+              TweenAnimationBuilder<double>(
+                tween: Tween(begin: 1.0, end: 0.0),
+                duration: Duration(seconds: 12),
+                onEnd: () {
+                  TripRequestService.instance.requestNotifier.value = null;
+                  AudioService.instance.stopSound();
+                },
+                builder: (context, value, child) {
+                  return SizedBox(
+                    height: 6,
+                    child: LinearProgressIndicator(
+                      value: value,
+                      backgroundColor: sliderBg.withAlpha((0.4 * 255).round()),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        Colors.greenAccent.shade400,
+                      ),
+                    ),
+                  );
+                },
+              ),
+              SizedBox(height: 8),
               // Top row: close button
               Row(
                 children: [
@@ -71,7 +94,7 @@ class TripRequestSheet extends StatelessWidget {
                 ],
               ),
 
-              // Price + ETA/Distance
+              // Price + ETA/Distance (com badge R$/km)
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -86,6 +109,67 @@ class TripRequestSheet extends StatelessWidget {
                             fontWeight: FontWeight.bold,
                             color: primaryText,
                           ),
+                        ),
+                        SizedBox(height: 6),
+                        // Badge de R$/km — cálculo seguro e exibido em destaque
+                        Builder(
+                          builder: (ctx) {
+                            double toDoubleSafe(dynamic v) {
+                              if (v == null) return 0.0;
+                              if (v is num) return v.toDouble();
+                              try {
+                                return double.parse(v.toString());
+                              } catch (_) {
+                                return 0.0;
+                              }
+                            }
+
+                            final double priceNum = toDoubleSafe(
+                              trip['price'] ??
+                                  trip['fare'] ??
+                                  trip['valor'] ??
+                                  0,
+                            );
+                            final double dPickup = toDoubleSafe(
+                              trip['distance_to_pickup'] ??
+                                  trip['pickup_distance'] ??
+                                  trip['pickup_distance_km'],
+                            );
+                            final double dTrip = toDoubleSafe(
+                              trip['distance'] ??
+                                  trip['trip_distance'] ??
+                                  trip['distance_km'],
+                            );
+                            final double totalKm = (dPickup + dTrip);
+                            final String rateText =
+                                (totalKm > 0 && priceNum > 0)
+                                ? 'R\$ ${(priceNum / totalKm).toStringAsFixed(2)} / km'
+                                : '—';
+
+                            return Row(
+                              children: [
+                                Container(
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.green[800],
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Text(
+                                    rateText,
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(width: 8),
+                              ],
+                            );
+                          },
                         ),
                         SizedBox(height: 6),
                         Row(
