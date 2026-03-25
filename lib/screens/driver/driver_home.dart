@@ -16,6 +16,7 @@ import '../../core/viper_theme.dart';
 import '../../services/auth_service.dart';
 import '../../services/location_service.dart';
 import '../../services/viper_foreground_service.dart';
+import '../../services/trip_request_service.dart';
 import 'widgets/ride_request_alert.dart';
 import 'driver_settings.dart';
 import 'profile/complete_profile_screen.dart';
@@ -630,6 +631,7 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
   Future<void> _disposeDriverMode() async {
     _positionSub?.cancel();
     _positionSub = null;
+    TripRequestService.instance.stopListening();
     await _clearDriverPuck();
     await _clearRouteOverview();
     await ViperForegroundService.stop();
@@ -726,6 +728,7 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
       supabaseKey: dotenv.env['SUPABASE_ANON_KEY'] ?? '',
       driverId: userId,
     );
+    TripRequestService.instance.startListening(driverId: userId);
 
     _positionSub = ViperLocationService.positionStream().listen(
       (pos) async {
