@@ -18,6 +18,7 @@ import '../../services/location_service.dart';
 import '../../services/viper_foreground_service.dart';
 import '../../services/trip_request_service.dart';
 import 'widgets/ride_request_alert.dart';
+import '../../widgets/trip_request_sheet.dart';
 import 'driver_settings.dart';
 import 'profile/complete_profile_screen.dart';
 import '../../controllers/account_controller.dart';
@@ -1757,21 +1758,28 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
               return ValueListenableBuilder<bool>(
                 valueListenable: _onlineNotifier,
                 builder: (context, isOnline, _) {
-                  if (isOnline) return const SizedBox.shrink();
-                  return Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: currentBottom,
-                    child: IgnorePointer(
-                      ignoring: opacity == 0.0,
-                      child: AnimatedOpacity(
-                        opacity: opacity,
-                        duration: const Duration(milliseconds: 200),
-                        child: Center(
-                          child: _StartPillButton(onTap: _goOnline),
+                  // Se existe uma requisição de corrida ativa, escondemos o botão COMEÇAR
+                  return ValueListenableBuilder<Map<String, dynamic>?>(
+                    valueListenable: TripRequestService.instance.requestNotifier,
+                    builder: (context, trip, child) {
+                      if (trip != null) return const SizedBox.shrink();
+                      if (isOnline) return const SizedBox.shrink();
+                      return Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: currentBottom,
+                        child: IgnorePointer(
+                          ignoring: opacity == 0.0,
+                          child: AnimatedOpacity(
+                            opacity: opacity,
+                            duration: const Duration(milliseconds: 200),
+                            child: Center(
+                              child: _StartPillButton(onTap: _goOnline),
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
+                      );
+                    },
                   );
                 },
               );
@@ -1805,6 +1813,20 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
                     ),
                   ),
                 ),
+              );
+            },
+          ),
+
+          // TripRequestSheet: exibe a BottomSheet fixa quando há uma requisição
+          ValueListenableBuilder<Map<String, dynamic>?>(
+            valueListenable: TripRequestService.instance.requestNotifier,
+            builder: (context, trip, _) {
+              if (trip == null) return const SizedBox.shrink();
+              return Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: TripRequestSheet(trip: trip),
               );
             },
           ),

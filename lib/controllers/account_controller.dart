@@ -1,5 +1,6 @@
 import 'package:get/get.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter/foundation.dart';
 
 class AccountController extends GetxController {
   final fullName = ''.obs;
@@ -42,15 +43,6 @@ class AccountController extends GetxController {
       final userId = Supabase.instance.client.auth.currentUser?.id;
       if (userId == null) {
         isLoading.value = false;
-        Future.delayed(const Duration(milliseconds: 500), () {
-          if (!isClosed) {
-            Get.snackbar(
-              'Perfil',
-              'Usuário não autenticado',
-              snackPosition: SnackPosition.BOTTOM,
-            );
-          }
-        });
         return;
       }
 
@@ -63,15 +55,8 @@ class AccountController extends GetxController {
           .maybeSingle();
 
       if (res == null) {
-        Future.delayed(const Duration(milliseconds: 500), () {
-          if (!isClosed) {
-            Get.snackbar(
-              'Perfil',
-              'Perfil não encontrado',
-              snackPosition: SnackPosition.BOTTOM,
-            );
-          }
-        });
+        // Não exibir SnackBar para o usuário final — log silencioso
+        debugPrint('Perfil não encontrado para userId: $userId');
       } else {
         final Map<String, dynamic> p = Map<String, dynamic>.from(res);
         fullName.value = p['full_name']?.toString() ?? '';
@@ -134,15 +119,6 @@ class AccountController extends GetxController {
     try {
       final userId = Supabase.instance.client.auth.currentUser?.id;
       if (userId == null) {
-        Future.delayed(const Duration(milliseconds: 500), () {
-          if (!isClosed) {
-            Get.snackbar(
-              'Erro',
-              'Usuário não autenticado',
-              snackPosition: SnackPosition.BOTTOM,
-            );
-          }
-        });
         return false;
       }
 
