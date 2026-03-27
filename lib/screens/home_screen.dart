@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../services/viper_wakelock_service.dart';
 import '../widgets/map_display.dart';
 import '../widgets/search_sheet.dart';
@@ -25,12 +26,17 @@ class _ViperHomeScreenState extends State<ViperHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Stack(
-        children: [
-          Positioned.fill(child: ViperMapDisplay()),
-          ViperSearchSheet(),
-        ],
+    final bool isNoite = DateTime.now().hour >= 18 || DateTime.now().hour < 6;
+
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: isNoite ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
+      child: Scaffold(
+        body: Stack(
+          children: [
+            Positioned.fill(child: MapDisplay()),
+            ViperSearchSheet(),
+          ],
+        ),
       ),
     );
   }

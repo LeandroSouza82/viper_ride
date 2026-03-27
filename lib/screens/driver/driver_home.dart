@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
@@ -1261,6 +1261,12 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
     // Este método é chamado APENAS UMA VEZ (montagem inicial).
     // Após isso, o Flutter jamais recria o Stack ou o MapWidget.
     // Cada camada abaixo tem seu próprio mecanismo de rebuild isolado.
+    final int horaAtual = DateTime.now().hour;
+    final bool isNoite = horaAtual >= 18 || horaAtual < 6;
+
+    SystemChrome.setSystemUIOverlayStyle(
+      isNoite ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
+    );
     return Scaffold(
       // FAB de teste: dispara um RideRequestAlert fictício para validar o card
       // em produção. Remover antes do release.

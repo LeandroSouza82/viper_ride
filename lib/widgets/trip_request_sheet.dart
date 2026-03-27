@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../services/audio_service.dart';
 import '../services/trip_request_service.dart';
 import 'package:slide_to_act/slide_to_act.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter/services.dart';
 
 class TripRequestSheet extends StatelessWidget {
   final Map<String, dynamic> trip;
@@ -30,6 +32,43 @@ class TripRequestSheet extends StatelessWidget {
     final destination =
         trip['destination_address'] ?? trip['destination'] ?? 'Destino';
     final rating = trip['rating'] ?? trip['passenger_rating'] ?? '—';
+
+    Future<void> abrirMapaExterno() async {
+      try {
+        // Usar coordenadas fixas de Embarque (A) conforme instruído
+        const String wazeUrl =
+            'https://waze.com/ul?ll=-27.6200,-48.6750&navigate=yes';
+        const String googleNav = 'google.navigation:q=-27.6200,-48.6750&mode=d';
+
+        // Vibrar o aparelho para feedback tátil
+        try {
+          HapticFeedback.vibrate();
+        } catch (_) {}
+
+        final Uri waze = Uri.parse(wazeUrl);
+        if (await canLaunchUrl(waze)) {
+          await launchUrl(waze, mode: LaunchMode.externalApplication);
+          return;
+        }
+
+        // Fallback para Google Navigation
+        final Uri g = Uri.parse(googleNav);
+        if (await canLaunchUrl(g)) {
+          await launchUrl(g, mode: LaunchMode.externalApplication);
+          return;
+        }
+
+        // Último recurso: abrir Google Maps web
+        await launchUrl(
+          Uri.parse(
+            'https://www.google.com/maps/search/?api=1&query=-27.6200,-48.6750',
+          ),
+          mode: LaunchMode.externalApplication,
+        );
+      } catch (e) {
+        print("Erro ao abrir mapa: $e");
+      }
+    }
 
     return SafeArea(
       top: false,
@@ -301,10 +340,11 @@ class TripRequestSheet extends StatelessWidget {
                 outerColor: sliderBg,
                 elevation: 0,
                 onSubmit: () async {
-                  TripRequestService.instance.requestNotifier.value = null;
                   try {
                     await AudioService.instance.stopSound();
                   } catch (_) {}
+                  await abrirMapaExterno();
+                  TripRequestService.instance.requestNotifier.value = null;
                 },
               ),
 
