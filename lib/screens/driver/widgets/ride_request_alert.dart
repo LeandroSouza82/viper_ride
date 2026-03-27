@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import '../../../services/trip_request_service.dart';
 
 /// Formas de pagamento aceitas pelo Viper Ride.
 enum ViperPaymentMethod { card, cash }
@@ -221,6 +223,79 @@ class _RideRequestAlertState extends State<RideRequestAlert> {
                                 ),
                               ),
                               const SizedBox(height: 5),
+                              // Badge R$/km — reativo via TripRequestService.requestRx
+                              Obx(() {
+                                final reactive =
+                                    TripRequestService.instance.requestRx.value;
+
+                                double toDoubleSafe(dynamic v) {
+                                  if (v == null) return 0.0;
+                                  if (v is num) return v.toDouble();
+                                  try {
+                                    return double.parse(v.toString());
+                                  } catch (_) {
+                                    return 0.0;
+                                  }
+                                }
+
+                                final double priceNum = reactive != null
+                                    ? toDoubleSafe(
+                                        reactive['price'] ??
+                                            reactive['fare'] ??
+                                            reactive['valor'],
+                                      )
+                                    : widget.request.fare;
+                                final double dPickup = reactive != null
+                                    ? toDoubleSafe(
+                                        reactive['distance_to_pickup'] ??
+                                            reactive['pickup_distance'] ??
+                                            reactive['pickup_distance_km'],
+                                      )
+                                    : widget.request.kmToPassenger;
+                                final double dTrip = reactive != null
+                                    ? toDoubleSafe(
+                                        reactive['distance'] ??
+                                            reactive['trip_distance'] ??
+                                            reactive['distance_km'],
+                                      )
+                                    : widget.request.kmToDestination;
+
+                                final double totalKm = (dPickup + dTrip);
+                                final String rateText =
+                                    (totalKm > 0 && priceNum > 0)
+                                    ? 'R\$ ${((priceNum / totalKm).toStringAsFixed(2)).replaceAll('.', ',')}/km'
+                                    : '—';
+
+                                return Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.grey[200],
+                                        borderRadius: BorderRadius.circular(
+                                          4.0,
+                                        ),
+                                        border: Border.all(
+                                          color: Colors.black,
+                                          width: 0.6,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        rateText,
+                                        style: const TextStyle(
+                                          color: Colors.black,
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                  ],
+                                );
+                              }),
                               const SizedBox(height: 1),
                               RichText(
                                 text: TextSpan(

@@ -1,6 +1,7 @@
 // lib/services/trip_request_service.dart
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:get/get.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'audio_service.dart';
 
@@ -11,6 +12,9 @@ class TripRequestService {
 
   final ValueNotifier<Map<String, dynamic>?> requestNotifier =
       ValueNotifier<Map<String, dynamic>?>(null);
+
+  /// Versão reativa do payload para uso com `Obx` onde desejado.
+  final Rxn<Map<String, dynamic>> requestRx = Rxn<Map<String, dynamic>>();
 
   StreamSubscription<dynamic>? _internalSub;
 
@@ -38,7 +42,9 @@ class TripRequestService {
                   final status =
                       (item['status'] as String?)?.toLowerCase() ?? '';
                   if (status == 'pending' || status == 'aguardando') {
-                    requestNotifier.value = Map<String, dynamic>.from(item);
+                    final payload = Map<String, dynamic>.from(item);
+                    requestNotifier.value = payload;
+                    requestRx.value = payload;
                     // Toca som de nova requisição
                     try {
                       AudioService.instance.playRequestSound();
@@ -51,7 +57,9 @@ class TripRequestService {
               final status =
                   (payload['status'] as String?)?.toLowerCase() ?? '';
               if (status == 'pending' || status == 'aguardando') {
-                requestNotifier.value = Map<String, dynamic>.from(payload);
+                final p = Map<String, dynamic>.from(payload);
+                requestNotifier.value = p;
+                requestRx.value = p;
                 try {
                   AudioService.instance.playRequestSound();
                 } catch (_) {}
@@ -68,6 +76,7 @@ class TripRequestService {
       _internalSub = null;
     } catch (_) {}
     requestNotifier.value = null;
+    requestRx.value = null;
     try {
       AudioService.instance.stopSound();
     } catch (_) {}
