@@ -20,20 +20,16 @@ class TripRequestSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color sliderBg = Theme.of(context).brightness == Brightness.dark
-        ? Colors.black
-        : Colors.grey[200]!;
+    final int horaAtual = DateTime.now().hour;
+    final bool isNoite = horaAtual >= 18 || horaAtual < 6;
+    final Color sliderBg = isNoite ? Colors.black : Colors.grey[200]!;
 
     final price = _formatPrice(trip['price'] ?? trip['fare'] ?? trip['valor']);
-    final eta = trip['eta'] ?? trip['pickup_eta'] ?? '--';
-    final distanceToPickup =
-        trip['distance_to_pickup'] ?? trip['pickup_distance'] ?? '--';
     final pickup =
         trip['pickup_address'] ?? trip['origin'] ?? 'Local de coleta';
     final destination =
         trip['destination_address'] ?? trip['destination'] ?? 'Destino';
     final rating = trip['rating'] ?? trip['passenger_rating'] ?? '—';
-    final payment = trip['payment_method'] ?? trip['payment'] ?? '—';
 
     return SafeArea(
       top: false,
@@ -42,9 +38,7 @@ class TripRequestSheet extends StatelessWidget {
         child: Container(
           width: double.infinity,
           decoration: BoxDecoration(
-            color: Theme.of(context).brightness == Brightness.dark
-                ? const Color(0xFF1E1E1E)
-                : Colors.white,
+            color: isNoite ? const Color(0xFF1E1E1E) : Colors.white,
             borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
             boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10)],
           ),
@@ -76,253 +70,217 @@ class TripRequestSheet extends StatelessWidget {
 
               const SizedBox(height: 8),
 
-              // Top row: preço à esquerda, X + rating/payment à direita
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Preço + métricas
-                  Expanded(
-                    child: Builder(
-                      builder: (context) {
-                        double extrairNumero(dynamic valor) {
-                          if (valor == null) return 0.0;
-                          if (valor is num) return valor.toDouble();
-                          final limpo = valor
-                              .toString()
-                              .replaceAll(RegExp(r'[^0-9.,]'), '')
-                              .replaceAll(',', '.');
-                          return double.tryParse(limpo) ?? 0.0;
-                        }
+              Builder(
+                builder: (context) {
+                  double extrairNumero(dynamic valor) {
+                    if (valor == null) return 0.0;
+                    if (valor is num) return valor.toDouble();
+                    final limpo = valor
+                        .toString()
+                        .replaceAll(RegExp(r'[^0-9.,]'), '')
+                        .replaceAll(',', '.');
+                    return double.tryParse(limpo) ?? 0.0;
+                  }
 
-                        final double valorTotal = extrairNumero(
-                          trip['price'] ?? trip['fare'] ?? trip['valor'],
-                        );
-                        final double distColeta = extrairNumero(
-                          trip['distance_to_pickup'] ?? trip['pickup_distance'],
-                        );
-                        final double distViagem = extrairNumero(
-                          trip['distance'] ?? trip['trip_distance'],
-                        );
-                        final double totalKm = distColeta + distViagem;
-                        final double valorPorKm = totalKm > 0
-                            ? (valorTotal / totalKm)
-                            : 0.0;
+                  final double valorTotal = extrairNumero(
+                    trip['price'] ?? trip['fare'] ?? trip['valor'],
+                  );
+                  final double distColeta = extrairNumero(
+                    trip['distance_to_pickup'] ?? trip['pickup_distance'],
+                  );
+                  final double distViagem = extrairNumero(
+                    trip['distance'] ?? trip['trip_distance'],
+                  );
+                  final double totalKm = distColeta + distViagem;
+                  final double valorPorKm = totalKm > 0
+                      ? (valorTotal / totalKm)
+                      : 0.0;
+                  final String tipoViagem = (trip['type'] == 'delivery')
+                      ? 'ENTREGA'
+                      : 'CORRIDA';
+                  final IconData iconeViagem = (trip['type'] == 'delivery')
+                      ? Icons.local_shipping
+                      : Icons.directions_car;
+                  final String formPagamento = trip['payment_method'] == 'pix'
+                      ? 'Pix'
+                      : (trip['payment_method'] == 'cash'
+                            ? 'Dinheiro'
+                            : 'Cartão');
 
-                        return Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              price,
-                              style: TextStyle(
-                                fontSize: 42,
-                                fontWeight: FontWeight.bold,
-                                color:
-                                    Theme.of(context).brightness ==
-                                        Brightness.dark
-                                    ? Colors.white
-                                    : Colors.black,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Row(
-                              children: [
-                                Text(
-                                  '$eta • $distanceToPickup',
-                                  style: TextStyle(
-                                    color:
-                                        Theme.of(context).brightness ==
-                                            Brightness.dark
-                                        ? Colors.white
-                                        : Colors.black,
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                if (valorPorKm > 0)
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 4,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: Colors.yellow,
-                                      borderRadius: BorderRadius.circular(6),
-                                      border: Border.all(
-                                        color: Colors.black,
-                                        width: 1,
-                                      ),
-                                    ),
-                                    child: Text(
-                                      'R\$ ${valorPorKm.toStringAsFixed(2).replaceAll('.', ',')}/km',
-                                      style: const TextStyle(
-                                        color: Colors.black,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ],
-                        );
-                      },
-                    ),
-                  ),
-
-                  // X, rating e pagamento
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      IconButton(
-                        onPressed: () {
-                          TripRequestService.instance.requestNotifier.value =
-                              null;
-                          AudioService.instance.stopSound();
-                        },
-                        icon: Icon(
-                          Icons.close,
-                          color: Theme.of(context).brightness == Brightness.dark
-                              ? Colors.white
-                              : Colors.black,
+                      Center(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isNoite
+                                ? Colors.grey[800]
+                                : Colors.grey[200],
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                iconeViagem,
+                                size: 16,
+                                color: isNoite ? Colors.white : Colors.black,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                tipoViagem,
+                                style: TextStyle(
+                                  color: isNoite ? Colors.white : Colors.black,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 4),
+
+                      Align(
+                        alignment: Alignment.topRight,
+                        child: IconButton(
+                          onPressed: () {
+                            TripRequestService.instance.requestNotifier.value =
+                                null;
+                            AudioService.instance.stopSound();
+                          },
+                          icon: Icon(
+                            Icons.close,
+                            color: isNoite ? Colors.white : Colors.black,
+                          ),
+                        ),
+                      ),
+
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Text(
+                            price,
+                            style: TextStyle(
+                              fontSize: 38,
+                              fontWeight: FontWeight.bold,
+                              color: isNoite ? Colors.white : Colors.black,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          if (valorPorKm > 0)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.yellow,
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(
+                                  color: Colors.black,
+                                  width: 1,
+                                ),
+                              ),
+                              child: Text(
+                                'R\$ ${valorPorKm.toStringAsFixed(2).replaceAll('.', ',')}/km',
+                                style: const TextStyle(
+                                  color: Colors.black,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 8),
+
                       Row(
                         children: [
                           Icon(
                             Icons.star,
-                            color: Colors.orangeAccent,
+                            color: isNoite ? Colors.white : Colors.black,
                             size: 18,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            rating.toString(),
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              color:
-                                  Theme.of(context).brightness ==
-                                      Brightness.dark
-                                  ? Colors.white
-                                  : Colors.black,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.credit_card,
-                            size: 18,
-                            color:
-                                Theme.of(context).brightness == Brightness.dark
-                                ? Colors.white
-                                : Colors.black,
                           ),
                           const SizedBox(width: 6),
                           Text(
-                            payment.toString(),
+                            rating.toString(),
                             style: TextStyle(
-                              color:
-                                  Theme.of(context).brightness ==
-                                      Brightness.dark
-                                  ? Colors.white
-                                  : Colors.black,
+                              color: isNoite ? Colors.white : Colors.black,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Icon(
+                            Icons.credit_card,
+                            size: 18,
+                            color: isNoite ? Colors.white : Colors.black,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            formPagamento,
+                            style: TextStyle(
+                              color: isNoite ? Colors.white : Colors.black,
                             ),
                           ),
                         ],
                       ),
                     ],
-                  ),
-                ],
+                  );
+                },
               ),
 
               const SizedBox(height: 12),
 
-              // Embarque (antes: Coleta)
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Column(
                     children: [
-                      Icon(Icons.circle, color: Colors.green, size: 12),
-                      Container(
-                        width: 1,
-                        height: 36,
-                        color: Theme.of(context).brightness == Brightness.dark
-                            ? Colors.grey[700]
-                            : Colors.grey[300],
-                      ),
-                      Icon(Icons.location_on, color: Colors.red, size: 20),
+                      Icon(Icons.circle, size: 12, color: Colors.green),
+                      Container(width: 2, height: 40, color: Colors.grey),
+                      Icon(Icons.stop, size: 12, color: Colors.red),
                     ],
                   ),
+
                   const SizedBox(width: 12),
+
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Embarque',
+                          "Embarque (${trip['distance_to_pickup'] ?? trip['pickup_distance'] ?? ''})",
                           style: TextStyle(
                             fontWeight: FontWeight.w600,
-                            color:
-                                Theme.of(context).brightness == Brightness.dark
-                                ? Colors.white
-                                : Colors.black,
+                            color: isNoite ? Colors.white : Colors.black,
                           ),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           pickup,
                           style: TextStyle(
-                            color:
-                                Theme.of(context).brightness == Brightness.dark
-                                ? Colors.white
-                                : Colors.black,
+                            color: isNoite ? Colors.white : Colors.black,
                           ),
                         ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
 
-              const SizedBox(height: 12),
+                        const SizedBox(height: 16),
 
-              // Destination (alinha pino vermelho com texto)
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Column(
-                    children: [
-                      const SizedBox(height: 36),
-                      Icon(Icons.location_on, color: Colors.red, size: 20),
-                    ],
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
                         Text(
-                          'Destino',
+                          "Destino (${trip['distance'] ?? trip['trip_distance'] ?? ''})",
                           style: TextStyle(
                             fontWeight: FontWeight.w600,
-                            color:
-                                Theme.of(context).brightness == Brightness.dark
-                                ? Colors.white
-                                : Colors.black,
+                            color: isNoite ? Colors.white : Colors.black,
                           ),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           destination,
                           style: TextStyle(
-                            color:
-                                Theme.of(context).brightness == Brightness.dark
-                                ? Colors.white
-                                : Colors.black,
+                            color: isNoite ? Colors.white : Colors.black,
                           ),
                         ),
                       ],
@@ -333,14 +291,11 @@ class TripRequestSheet extends StatelessWidget {
 
               const SizedBox(height: 16),
 
-              // Real slider — usa slide_to_act
               SlideAction(
                 text: 'Deslize para aceitar',
                 textStyle: TextStyle(
                   fontWeight: FontWeight.w600,
-                  color: Theme.of(context).brightness == Brightness.dark
-                      ? Colors.white
-                      : Colors.black,
+                  color: isNoite ? Colors.white : Colors.black,
                 ),
                 innerColor: Colors.green,
                 outerColor: sliderBg,
@@ -359,9 +314,7 @@ class TripRequestSheet extends StatelessWidget {
                   'Arraste para a direita para aceitar a corrida',
                   style: TextStyle(
                     fontSize: 12,
-                    color: Theme.of(context).brightness == Brightness.dark
-                        ? Colors.white
-                        : Colors.black,
+                    color: isNoite ? Colors.white : Colors.black,
                   ),
                 ),
               ),
