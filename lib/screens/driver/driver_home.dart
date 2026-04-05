@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -10,6 +11,7 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:geolocator/geolocator.dart' as geo;
 import 'package:http/http.dart' as http;
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/utils/device_utils.dart';
 import '../../core/viper_theme.dart';
@@ -18,9 +20,10 @@ import '../../services/location_service.dart';
 import '../../services/viper_foreground_service.dart';
 import '../../services/trip_request_service.dart';
 import '../../services/audio_service.dart';
-import '../../controllers/mapbox_theme_controller.dart';
 import 'widgets/ride_request_alert.dart';
 import '../../widgets/trip_request_sheet.dart';
+import '../../widgets/cards/trip_navigation_sheet.dart';
+import '../../widgets/map_display.dart';
 import 'driver_settings.dart';
 import 'profile/complete_profile_screen.dart';
 import '../../controllers/account_controller.dart';
@@ -77,8 +80,12 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
 
   final _sheetController = DraggableScrollableController();
   final _sheetExtentNotifier = ValueNotifier<double>(0.12);
-  bool _isEarningsExpanded = false;
-  bool _isEarningsVisible = true;
+  final _isEarningsExpandedNotifier = ValueNotifier<bool>(
+    false,
+  ); // NOVO: ValueNotifier em vez de bool
+  final _isEarningsVisibleNotifier = ValueNotifier<bool>(
+    true,
+  ); // NOVO: ValueNotifier em vez de bool
   final double _dailyEarnings = 154.20;
   final int _tripsCompleted = 8;
   final int _points = 120;
@@ -86,10 +93,17 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
   // Simula o array de veículos aprovados vindo do Supabase
   final List<String> _veiculosCadastrados = ['moto', 'carro'];
   final PageController _pageController = PageController();
-  int _currentPage = 0;
+  final _currentPageNotifier = ValueNotifier<int>(
+    0,
+  ); // NOVO: ValueNotifier em vez de int
   String? _vehicleType;
+  Map<String, dynamic>?
+  _activeTrip; // NOVO: Controla transição para painel de navegação
 
   StreamSubscription<geo.Position>? _positionSub;
+  geo.Position? _lastPositionUpdate; // Throttle de GPS (5-10 metros)
+  String?
+  _lastTriggeredTripId; // NOVO: Evita disparar showTripRoute() múltiplas vezes para mesma trip
   MapboxMap? _mapController;
   PointAnnotationManager? _driverPuckManager;
   PointAnnotationManager? _routePointManager;
@@ -98,10 +112,17 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
   Uint8List? _driverPuckImage;
   Uint8List? _pickupMarkerImage;
   Uint8List? _destinationMarkerImage;
+  final MapDisplayController _mapDisplayController = MapDisplayController();
 
   @override
   void initState() {
     super.initState();
+
+    // LISTENER DEDICADO: Dispara rota UMA vez por oferta, FORA do build().
+    // Isso elimina o loop lockHardwareCanvas causado por addPostFrameCallback
+    // dentro do ValueListenableBuilder.
+    TripRequestService.instance.requestNotifier.addListener(_onTripRequestChanged);
+
     // postFrameCallback: executa somente após o primeiro frame estar pintado
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -140,6 +161,68 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
         } catch (_) {}
       });
     });
+  }
+
+  /// Listener dedicado para TripRequestService.requestNotifier.
+  /// Roda FORA do build() — zero rebuilds no mapa.
+  /// Usa _positionNotifier.value em vez de getCurrentPosition() para evitar
+  /// chamadas assíncronas de GPS que estressam o canvas.
+  void _onTripRequestChanged() {
+    final trip = TripRequestService.instance.requestNotifier.value;
+
+    // Trip removida (recusado/expirado): limpa rota se não há corrida ativa
+    if (trip == null) {
+      debugPrint('VUP_LOG: [Listener] Trip é null, limpando rota');
+      _lastTriggeredTripId = null;
+      if (_activeTrip == null) {
+        _mapDisplayController.clearTripRoute();
+      }
+      return;
+    }
+
+    // GATE: Só dispara UMA VEZ por ID de trip
+    final currentTripId = trip['id']?.toString();
+    if (currentTripId == _lastTriggeredTripId) {
+      debugPrint('VUP_LOG: [Listener] Trip ID=$currentTripId já processada, skipping');
+      return;
+    }
+    _lastTriggeredTripId = currentTripId;
+    debugPrint('VUP_LOG: [Listener] Nova trip ID=$currentTripId, processando rota');
+    debugPrint('VUP_LOG: [Listener] trip full: $trip');
+
+    // Extrai coordenadas com conversão segura
+    final double pLat = double.tryParse(trip['pickup_lat'].toString()) ?? 0.0;
+    final double pLng = double.tryParse(trip['pickup_lng'].toString()) ?? 0.0;
+    final double dLat = double.tryParse(trip['dest_lat'].toString()) ?? 0.0;
+    final double dLng = double.tryParse(trip['dest_lng'].toString()) ?? 0.0;
+
+    debugPrint('VUP_LOG: Coordenadas Reais -> Origem($pLat, $pLng) Destino($dLat, $dLng)');
+
+    // Guard: coordenadas zeradas = Supabase mandou lixo
+    if (pLat == 0.0 || pLng == 0.0 || dLat == 0.0 || dLng == 0.0) {
+      debugPrint('VUP_LOG: ERRO - Coordenadas zeradas, abortando desenho para evitar loop.');
+      return;
+    }
+
+    // Origem: usa GPS já cacheado em _positionNotifier (ZERO chamadas assíncronas).
+    // Fallback: se GPS é null, usa a coordenada de pickup como origem.
+    final cachedPos = _positionNotifier.value;
+    final List<double> origin;
+    if (cachedPos != null) {
+      origin = [cachedPos.longitude, cachedPos.latitude];
+      debugPrint('VUP_LOG: [Listener] Usando GPS cacheado: $origin');
+    } else {
+      origin = [pLng, pLat];
+      debugPrint('VUP_LOG: [Listener] GPS null, usando pickup como fallback de origem: $origin');
+    }
+
+    // Dispara rota no mapa — fire-and-forget, SEM await dentro de listener
+    _mapDisplayController.showTripRoute(
+      [pLng, pLat],
+      [dLng, dLat],
+      originCoords: origin,
+      tripId: currentTripId,
+    );
   }
 
   Future<void> _loadVehicleType() async {
@@ -261,54 +344,9 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
     );
   }
 
-  Future<void> _onMapCreated(MapboxMap controller) async {
-    _mapController = controller;
-    _driverPuckImage ??= await _buildDriverPuckImage();
-    _pickupMarkerImage ??= await _buildRouteMarkerImage(
-      icon: Icons.person_pin_circle_rounded,
-      color: const Color(0xFF2ECC71),
-    );
-    _destinationMarkerImage ??= await _buildRouteMarkerImage(
-      icon: Icons.location_on_rounded,
-      color: const Color(0xFFE53935),
-    );
+  // _onMapCreated removed: Map creation handled inside MapDisplay widget.
 
-    await controller.scaleBar.updateSettings(ScaleBarSettings(enabled: false));
-    await controller.compass.updateSettings(CompassSettings(enabled: false));
-    await controller.logo.updateSettings(LogoSettings(enabled: false));
-    await controller.attribution.updateSettings(
-      AttributionSettings(enabled: false),
-    );
-    await controller.location.updateSettings(
-      LocationComponentSettings(
-        // Puck nativo desligado: o LocationComponent do Mapbox é a origem dos
-        // crashes de PlatformView/Surface no Android. A posição agora é nossa.
-        enabled: false,
-        pulsingEnabled: false,
-        showAccuracyRing: false,
-        puckBearingEnabled: false,
-        locationPuck: LocationPuck(locationPuck2D: DefaultLocationPuck2D()),
-      ),
-    );
-
-    _driverPuckManager ??= await controller.annotations
-        .createPointAnnotationManager();
-    _routePointManager ??= await controller.annotations
-        .createPointAnnotationManager();
-    _routePolylineManager ??= await controller.annotations
-        .createPolylineAnnotationManager();
-
-    final pos = _positionNotifier.value;
-    if (pos != null) {
-      await _updateDriverPuck(pos);
-    }
-
-    final request = _rideRequestNotifier.value;
-    if (pos != null && request != null) {
-      await _drawRouteOverview(request, pos);
-    }
-  }
-
+  // ignore: unused_element
   Future<Uint8List> _buildDriverPuckImage() async {
     const size = 64.0;
     final recorder = ui.PictureRecorder();
@@ -333,6 +371,7 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
     return bytes!.buffer.asUint8List();
   }
 
+  // ignore: unused_element
   Future<Uint8List> _buildRouteMarkerImage({
     required IconData icon,
     required Color color,
@@ -464,6 +503,7 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
     return {'coordinates': <Map<String, dynamic>>[]};
   }
 
+  // ignore: unused_element
   Future<void> _drawRouteOverview(
     RideRequest request,
     geo.Position driverPosition,
@@ -563,6 +603,34 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
     _positionNotifier.value = pos;
     await _updateDriverPuck(pos);
     _setCamera(pos);
+  }
+
+  /// Calcula distância entre duas coordenadas em metros (Haversine)
+  double _calculateDistance(
+    double lat1,
+    double lon1,
+    double lat2,
+    double lon2,
+  ) {
+    const double R = 6371000; // Raio da Terra em metros
+    final double dLat = (lat2 - lat1) * math.pi / 180;
+    final double dLon = (lon2 - lon1) * math.pi / 180;
+    final double a =
+        math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(lat1 * math.pi / 180) *
+            math.cos(lat2 * math.pi / 180) *
+            math.sin(dLon / 2) *
+            math.sin(dLon / 2);
+    final double c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+    return R * c;
+  }
+
+  /// Extrai coordenada de um valor que pode estar em vários formatos
+  double? _parseCoordinate(dynamic value) {
+    if (value == null) return null;
+    if (value is num) return value.toDouble();
+    final cleaned = value.toString().replaceAll(',', '.');
+    return double.tryParse(cleaned);
   }
 
   Future<void> _snapBackToDriver() async {
@@ -738,15 +806,39 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
 
     _positionSub = ViperLocationService.positionStream().listen(
       (pos) async {
-        // Sem setState: apenas atualiza o ValueNotifier. O mapa não segue o
-        // GPS automaticamente — overview estático por definição de negócio.
+        // Throttle: só atualiza se movimentação > 5 metros
+        if (_lastPositionUpdate != null) {
+          final distance = _calculateDistance(
+            _lastPositionUpdate!.latitude,
+            _lastPositionUpdate!.longitude,
+            pos.latitude,
+            pos.longitude,
+          );
+
+          // Se moveu menos de 5 metros, ignora atualização
+          if (distance < 5.0) {
+            debugPrint(
+              'VUP_LOG: GPS update ignorado - distância: ${distance.toStringAsFixed(2)}m (< 5m)',
+            );
+            return;
+          }
+        }
+
+        // Atualiza última posição e notifica
+        _lastPositionUpdate = pos;
         _positionNotifier.value = pos;
         await _updateDriverPuck(pos);
+        debugPrint(
+          'VUP_LOG: Posição atualizada - lat: ${pos.latitude}, lng: ${pos.longitude}',
+        );
       },
       onError: (_) {
         if (mounted) _goOffline();
       },
     );
+
+    // Apenas ativa GPS, status online e centraliza câmera - NÃO desenha rota
+    await _centerOnDriver();
   }
 
   void _showPreferencesSheet(BuildContext context) {
@@ -1209,6 +1301,7 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
   }
 
   Future<void> _goOffline() async {
+    await _mapDisplayController.clearTripRoute();
     await _disposeDriverMode();
     _onlineNotifier.value = false; // sem setState — mapa não é tocado
     _collapseSheet();
@@ -1216,6 +1309,8 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
 
   @override
   void dispose() {
+    // Remove listener dedicado ANTES de qualquer outra limpeza
+    TripRequestService.instance.requestNotifier.removeListener(_onTripRequestChanged);
     _positionSub?.cancel();
     final mapboxMap = _mapController;
     if (mapboxMap != null) {
@@ -1244,6 +1339,9 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
     _positionNotifier.dispose();
     _rideRequestNotifier.dispose();
     _sheetExtentNotifier.dispose();
+    _isEarningsExpandedNotifier.dispose(); // NOVO
+    _isEarningsVisibleNotifier.dispose(); // NOVO
+    _currentPageNotifier.dispose(); // NOVO
     _sheetController.dispose();
     _pageController.dispose();
     // Destrói o renderer nativo do Mapbox antes de liberar a tela
@@ -1255,6 +1353,11 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
     ViperDeviceUtils.releaseScreen();
     super.dispose();
   }
+
+  // Getters para acessar valores dos ValueNotifiers (evita rebuild do build() inteiro)
+  bool get _isEarningsExpanded => _isEarningsExpandedNotifier.value;
+  bool get _isEarningsVisible => _isEarningsVisibleNotifier.value;
+  int get _currentPage => _currentPageNotifier.value;
 
   @override
   Widget build(BuildContext context) {
@@ -1268,6 +1371,7 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
       isNoite ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
     );
     return Scaffold(
+      extendBodyBehindAppBar: true,
       // FAB de teste: dispara um RideRequestAlert fictício para validar o card
       // em produção. Remover antes do release.
       floatingActionButtonLocation: FloatingActionButtonLocation.startTop,
@@ -1277,15 +1381,20 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
         foregroundColor: Colors.black,
         tooltip: 'Testar alerta de corrida',
         onPressed: () {
+          // Trigger de teste: payload padronizado para simulação cirúrgica
           TripRequestService.instance.requestNotifier.value = {
-            'price': 18.50,
-            'eta': '15 min',
-            'distance_to_pickup': '7.3 km',
-            'trip_distance': '4.8 km',
-            'pickup_address': 'Passeio Pedra Branca, Palhoça',
-            'destination_address': 'Shopping ViaCatarina, Palhoça',
-            'rating': 4.9,
-            'payment_method': 'Cartão',
+            'id': 'teste-cirurgico-123',
+            'passenger_name': 'Passageiro VIP',
+            'passenger_rating': 5.0,
+            'pickup_address': 'Ponto de Partida A',
+            'destination_address': 'Destino Final B',
+            'dest_address': 'Destino Final B',
+            'pickup_lat': -27.5900,
+            'pickup_lng': -48.5400,
+            'dest_lat': -27.6000,
+            'dest_lng': -48.5500,
+            'price': 15.50,
+            'status': 'pending',
           };
           AudioService.instance.playRequestSound();
         },
@@ -1306,22 +1415,8 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
           // rígidas sem criar camada extra de composição.
           ValueListenableBuilder<bool>(
             valueListenable: _canShowMapNotifier,
-            child: SizedBox.expand(
-              child: MapWidget(
-                // textureView: true — usa TextureView em vez de SurfaceView.
-                // Solução oficial Mapbox para Android: elimina o conflito de
-                // repintura (lockHardwareCanvas / QueueBuffer timeout) causado
-                // por overlays de Stack sobre o PlatformView.
-                textureView: true,
-                styleUri: MapboxThemeController.styleFromTime(),
-                cameraOptions: CameraOptions(
-                  center: Point(coordinates: Position(-46.6333, -23.5505)),
-                  zoom: 15.0,
-                  bearing: 0.0,
-                  pitch: 45.0,
-                ),
-                onMapCreated: _onMapCreated,
-              ),
+            child: Positioned.fill(
+              child: MapDisplay(controller: _mapDisplayController),
             ),
             builder: (context, canShow, mapChild) =>
                 canShow ? mapChild! : Container(color: Colors.black),
@@ -1368,7 +1463,7 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
                   // ESTADO 1: PÍLULA RECOLHIDA
                   ? GestureDetector(
                       key: const ValueKey('collapsed'),
-                      onTap: () => setState(() => _isEarningsExpanded = true),
+                      onTap: () => _isEarningsExpandedNotifier.value = true,
                       child: Center(
                         child: Container(
                           padding: const EdgeInsets.symmetric(
@@ -1410,7 +1505,7 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
                   // ESTADO 2: CARROSSEL EXPANDIDO
                   : GestureDetector(
                       key: const ValueKey('expanded'),
-                      onTap: () => setState(() => _isEarningsExpanded = false),
+                      onTap: () => _isEarningsExpandedNotifier.value = false,
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -1430,7 +1525,7 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
                             child: PageView(
                               controller: _pageController,
                               onPageChanged: (int page) =>
-                                  setState(() => _currentPage = page),
+                                  _currentPageNotifier.value = page,
                               children: [
                                 // CARD 1: RESUMO
                                 Stack(
@@ -1445,10 +1540,10 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
                                               : Icons.visibility_off,
                                           color: Colors.black,
                                         ),
-                                        onPressed: () => setState(
-                                          () => _isEarningsVisible =
-                                              !_isEarningsVisible,
-                                        ),
+                                        onPressed: () =>
+                                            _isEarningsVisibleNotifier.value =
+                                                !_isEarningsVisibleNotifier
+                                                    .value,
                                       ),
                                     ),
                                     Column(
@@ -1739,19 +1834,132 @@ class _ViperDriverHomeState extends State<ViperDriverHome> {
             },
           ),
 
-          // TripRequestSheet: exibe a BottomSheet fixa quando há uma requisição
-          ValueListenableBuilder<Map<String, dynamic>?>(
-            valueListenable: TripRequestService.instance.requestNotifier,
-            builder: (context, trip, _) {
-              if (trip == null) return const SizedBox.shrink();
-              return Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: TripRequestSheet(trip: trip),
-              );
-            },
+          // TripRequestSheet: exibe a BottomSheet fixa quando há uma requisição.
+          // REGRA DE OURO: Este builder APENAS decide mostrar/esconder o widget.
+          // Toda lógica de rota/mapa está em _onTripRequestChanged (listener).
+          // ZERO addPostFrameCallback, ZERO chamadas GPS, ZERO showTripRoute aqui.
+          Positioned.fill(
+            child: RepaintBoundary(
+              child: ValueListenableBuilder<Map<String, dynamic>?>(
+                valueListenable: TripRequestService.instance.requestNotifier,
+                builder: (context, trip, _) {
+                  // Sem trip = sem card
+                  if (trip == null) return const SizedBox.shrink();
+
+                  // Apenas exibe o widget — toda lógica de mapa está no listener
+                  return Align(
+                    alignment: Alignment.bottomCenter,
+                    child: Padding(
+                      padding: const EdgeInsets.only(
+                        bottom: 16.0,
+                        left: 16.0,
+                        right: 16.0,
+                      ),
+                      child: TripRequestSheet(
+                        trip: trip,
+                        onAcceptRoute: (origin, destination) async {
+                          debugPrint(
+                            'VUP_LOG: Motorista aceitou a corrida ${trip['id']}',
+                          );
+                          // 1. Salva a corrida como ativa para mostrar o painel de navegação
+                          setState(() {
+                            _activeTrip = trip;
+                          });
+                          // 2. Limpa a notificação para fechar o card de oferta
+                          TripRequestService.instance.clearRequest();
+                        },
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
           ),
+
+          // Painel de Navegação: Aparece após aceitar a corrida
+          if (_activeTrip != null)
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: Padding(
+                padding: const EdgeInsets.only(
+                  bottom: 16.0,
+                  left: 16.0,
+                  right: 16.0,
+                ),
+                child: TripNavigationSheet(
+                  trip: _activeTrip!,
+                  onNavigate: () async {
+                    debugPrint('VUP_LOG: Abrir Waze/Maps (intent)');
+                    try {
+                      final double destLat = double.tryParse(_activeTrip!['dest_lat'].toString()) ?? 0.0;
+                      final double destLng = double.tryParse(_activeTrip!['dest_lng'].toString()) ?? 0.0;
+
+                      debugPrint('VUP_LOG: Extração Waze -> Destino($destLat, $destLng)');
+
+                      if (destLat == 0.0 || destLng == 0.0) {
+                        debugPrint('VUP_LOG: Destino inválido, abortando mapa');
+                        return;
+                      }
+
+                      final wazeUrl = Uri.parse(
+                        'https://waze.com/ul?ll=$destLat,$destLng&navigate=yes',
+                      );
+                      if (await canLaunchUrl(wazeUrl)) {
+                        await launchUrl(
+                          wazeUrl,
+                          mode: LaunchMode.externalApplication,
+                        );
+                        return;
+                      }
+
+                      final googleUrl = Uri.parse(
+                        'google.navigation:q=$destLat,$destLng&mode=d',
+                      );
+                      if (await canLaunchUrl(googleUrl)) {
+                        await launchUrl(
+                          googleUrl,
+                          mode: LaunchMode.externalApplication,
+                        );
+                        return;
+                      }
+
+                      final web = Uri.parse(
+                        'https://www.google.com/maps/search/?api=1&query=$destLat,$destLng',
+                      );
+                      await launchUrl(
+                        web,
+                        mode: LaunchMode.externalApplication,
+                      );
+                    } catch (e) {
+                      debugPrint(
+                        'VUP_LOG: Falha ao abrir intent de navegação: $e',
+                      );
+                    }
+                  },
+                  onArrived: () async {
+                    debugPrint(
+                      'VUP_LOG: Motorista Chegou - atualizando status no BD',
+                    );
+                    try {
+                      final id = _activeTrip!['id'];
+                      if (id != null) {
+                        await Supabase.instance.client
+                            .from('trips')
+                            .update({'status': 'arrived'})
+                            .eq('id', id);
+                      }
+                    } catch (e) {
+                      debugPrint(
+                        'VUP_LOG: Falha ao atualizar status no BD: $e',
+                      );
+                    }
+                    setState(() {
+                      _activeTrip = null;
+                    });
+                  },
+                ),
+              ),
+            ),
         ],
       ),
     );

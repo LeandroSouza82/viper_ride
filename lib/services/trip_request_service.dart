@@ -82,6 +82,15 @@ class TripRequestService {
     } catch (_) {}
   }
 
+  /// Limpa a requisição atual sem parar a escuta.
+  void clearRequest() {
+    requestNotifier.value = null;
+    requestRx.value = null;
+    try {
+      AudioService.instance.stopSound();
+    } catch (_) {}
+  }
+
   /// Remove recursos definitivamente.
   Future<void> dispose() async {
     await stopListening();

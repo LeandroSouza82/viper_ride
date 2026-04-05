@@ -7,8 +7,10 @@ import 'package:flutter/services.dart';
 
 class TripRequestSheet extends StatelessWidget {
   final Map<String, dynamic> trip;
+  final void Function(List<double> origin, List<double> destination)?
+  onAcceptRoute;
 
-  const TripRequestSheet({super.key, required this.trip});
+  const TripRequestSheet({super.key, required this.trip, this.onAcceptRoute});
 
   String _formatPrice(dynamic p) {
     if (p == null) return 'R\$ 0,00';
@@ -18,6 +20,13 @@ class TripRequestSheet extends StatelessWidget {
     } catch (_) {
       return p.toString();
     }
+  }
+
+  double? _parseCoordinate(dynamic value) {
+    if (value == null) return null;
+    if (value is num) return value.toDouble();
+    final cleaned = value.toString().replaceAll(',', '.');
+    return double.tryParse(cleaned);
   }
 
   @override
@@ -33,12 +42,18 @@ class TripRequestSheet extends StatelessWidget {
         trip['destination_address'] ?? trip['destination'] ?? 'Destino';
     final rating = trip['rating'] ?? trip['passenger_rating'] ?? '—';
 
-    Future<void> abrirMapaExterno() async {
+    Future<void> abrirMapaExterno(
+      double pickupLat,
+      double pickupLng,
+      double destLat,
+      double destLng,
+    ) async {
       try {
-        // Usar coordenadas fixas de Embarque (A) conforme instruído
-        const String wazeUrl =
-            'https://waze.com/ul?ll=-27.6200,-48.6750&navigate=yes';
-        const String googleNav = 'google.navigation:q=-27.6200,-48.6750&mode=d';
+        // Usar coordenadas dinâmicas do trip
+        final String wazeUrl =
+            'https://waze.com/ul?ll=$pickupLat,$pickupLng&navigate=yes';
+        final String googleNav =
+            'google.navigation:q=$pickupLat,$pickupLng&mode=d';
 
         // Vibrar o aparelho para feedback tátil
         try {
@@ -61,12 +76,12 @@ class TripRequestSheet extends StatelessWidget {
         // Último recurso: abrir Google Maps web
         await launchUrl(
           Uri.parse(
-            'https://www.google.com/maps/search/?api=1&query=-27.6200,-48.6750',
+            'https://www.google.com/maps/search/?api=1&query=$pickupLat,$pickupLng',
           ),
           mode: LaunchMode.externalApplication,
         );
       } catch (e) {
-        print("Erro ao abrir mapa: $e");
+        debugPrint("Erro ao abrir mapa: $e");
       }
     }
 
@@ -78,8 +93,14 @@ class TripRequestSheet extends StatelessWidget {
           width: double.infinity,
           decoration: BoxDecoration(
             color: isNoite ? const Color(0xFF1E1E1E) : Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
-            boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10)],
+            borderRadius: BorderRadius.all(Radius.circular(16.0)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black26,
+                blurRadius: 10.0,
+                spreadRadius: 2.0,
+              ),
+            ],
           ),
           padding: EdgeInsets.fromLTRB(16, 12, 16, 16),
           child: Column(
@@ -343,7 +364,51 @@ class TripRequestSheet extends StatelessWidget {
                   try {
                     await AudioService.instance.stopSound();
                   } catch (_) {}
-                  await abrirMapaExterno();
+
+                  // Log completo do trip quando o usuário desliza para aceitar
+                  debugPrint('VUP_LOG: TripRequestSheet.onSubmit trip: $trip');
+
+                  // Extrai coordenadas do trip
+                  final pickupLat = _parseCoordinate(
+                    trip['pickup_lat'] ??
+                        trip['origin_lat'] ??
+                        trip['start_lat'],
+                  );
+                  final pickupLng = _parseCoordinate(
+                    trip['pickup_lng'] ??
+                        trip['origin_lng'] ??
+                        trip['start_lng'],
+                  );
+                  final destLat = _parseCoordinate(
+                    trip['dest_lat'] ??
+                        trip['destination_lat'] ??
+                        trip['end_lat'],
+                  );
+                  final destLng = _parseCoordinate(
+                    trip['dest_lng'] ??
+                        trip['destination_lng'] ??
+                        trip['end_lng'],
+                  );
+
+                  if (pickupLat != null &&
+                      pickupLng != null &&
+                      destLat != null &&
+                      destLng != null) {
+                    // Chama o controlador do mapa para desenhar a rota
+                    onAcceptRoute?.call(
+                      [pickupLng, pickupLat],
+                      [destLng, destLat],
+                    );
+
+                    // Abre mapa externo com coordenadas dinâmicas
+                    await abrirMapaExterno(
+                      pickupLat,
+                      pickupLng,
+                      destLat,
+                      destLng,
+                    );
+                  }
+
                   TripRequestService.instance.requestNotifier.value = null;
                 },
               ),
